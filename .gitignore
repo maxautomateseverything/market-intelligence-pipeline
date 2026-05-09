@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Environment
+.env
+.venv/
+venv/
+
+# Data
+data/*.duckdb
+data/raw/*
+data/processed/*
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
