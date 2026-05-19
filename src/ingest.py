@@ -3,7 +3,55 @@ from datetime import datetime, timezone
 import pandas as pd
 import yfinance as yf
 
-from src.config import RAW_DATA_DIR, RAW_PRICES_FILE, TICKERS, START_DATE, END_DATE
+from src.config import RAW_DATA_DIR, RAW_PRICES_FILE, TICKERS, START_DATE, END_DATE, METADATA_FILE
+
+def get_ticker_metadata(tickers: list[str]) -> pd.DataFrame:
+
+    rows = []
+
+    for ticker in tickers:
+        try:
+            yf_ticker = yf.Ticker(ticker)
+
+            info = yf_ticker.info
+
+            print(f"Downloading metadata for {ticker}...")
+
+
+
+            rows.append({
+                "ticker": ticker,
+                "exchange": info.get("exchange"),
+                "quote_type": info.get("quoteType"),
+                "currency": info.get("currency"),
+                "timezone": info.get("exchangeTimezoneName"),
+                "short_name": info.get("shortName"),
+            })
+
+        except Exception as e:
+            rows.append({
+                "ticker": ticker,
+                "exchange": None,
+                "quote_type": None,
+                "currency": None,
+                "timezone": None,
+                "short_name": None,
+                "error": str(e),
+            })
+
+    return pd.DataFrame(rows)
+
+def save_metadata(metadata_df: pd.DataFrame) -> None:
+# Takes a dataframe as an argument and returns nothing.
+
+    RAW_DATA_DIR.mkdir(parents=True,exist_ok=True)
+    # Esnures that the RAW DATA Directory exists.
+    # If it doesn't then it will create it.
+
+    metadata_df.to_csv(METADATA_FILE, index=False)
+    # Export dataframe to CSV at the path, not saving the index.
+
+    print(f"Saved metadata to: {METADATA_FILE}")
 
 def download_prices(tickers: list[str]) -> pd.DataFrame:
 # We define a function called download_prices that accepts one argument.
@@ -97,6 +145,12 @@ def main() -> None:
     print(f"Date Range: {prices['Date'].min()} to {prices['Date'].max()}")
     # Prints earlist date in downloaded data and older date.
     
+    metadata = get_ticker_metadata(TICKERS)
+    save_metadata(metadata)
+    print(metadata.head())
+
+
+
 if __name__ == "__main__":
     main()
 # Common python pattern that essetnially says to only run main() if the file

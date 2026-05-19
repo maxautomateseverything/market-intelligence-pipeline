@@ -1,10 +1,5 @@
-from datetime import datetime, timezone
-
-import pandas as pd
-import yfinance as yf
-
-from src.config import RAW_DATA_DIR, RAW_PRICES_FILE, TICKERS, START_DATE, END_DATE
-from src.ingest import download_prices, save_raw_prices
+from src.config import TICKERS
+from src.ingest import download_prices, save_raw_prices, get_ticker_metadata, save_metadata
 
 def main() -> None:
 # Defines main workflows script and returns nothing.
@@ -22,6 +17,13 @@ def main() -> None:
     # Gets unique ticker values and converts the array into a list.
     print(f"Date Range: {prices['Date'].min()} to {prices['Date'].max()}")
     # Prints earlist date in downloaded data and older date.
+
+    metadata = get_ticker_metadata(TICKERS)
+    
+    print("\nTicker metadata:")
+    print(metadata.head())
+
+    save_metadata(metadata)
     
 if __name__ == "__main__":
     main()

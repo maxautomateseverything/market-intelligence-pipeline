@@ -25,6 +25,7 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 # we then define the paths of the various folders.
 
 RAW_PRICES_FILE = RAW_DATA_DIR / "prices_raw.csv"
+METADATA_FILE = RAW_DATA_DIR / "metadata.csv"
 
 # we also define the path of the output prices_raw file.
 
@@ -65,3 +66,19 @@ TICKER_COL = "ticker"
 DATE_COL = "date"
 
 EARLIEST_FIRST = True
+
+# Variables to import into features.py file.
+
+EXCHANGE_TO_CALENDAR = {
+    "NMS": "NASDAQ",
+    "NGM": "NASDAQ",
+    "NCM": "NASDAQ",
+    "NYQ": "NYSE",
+    "ASE": "NYSE",
+    "PCX": "NYSE",      # NYSE Arca, often ETFs like SPY/GLD
+    "LSE": "LSE",
+    "JPX": "JPX",
+    "TOR": "TSX",
+    "ASX": "ASX",
+    "FRA": "XFRA",
+}

@@ -46,7 +46,7 @@ To which we should see:
 ## D. Install Project Packages
 
 ```
-pip install pandas numpy yfinance duckdb scikit-learn streamlit plotly matplotlib python-dotenv pytest
+pip install pandas numpy yfinance duckdb scikit-learn streamlit plotly matplotlib python-dotenv pytest pandas-market-calendars
 ```
 
 - pandas: used for data cleaning (is a core data skill)
@@ -56,6 +56,7 @@ pip install pandas numpy yfinance duckdb scikit-learn streamlit plotly matplotli
 - scikit-learn: used for modeling (is the industry standard ML library)
 - streamlit: used for the dashboard (easy python web app framework that is good for beginners)
 - prefect: orhcastration (turns script into trackable workflows: supports retries, dependencies, scheduling, and monitoring concepts)
+- pandas-market-calendars: calendar of when the market is open to allow for accuarte return calculations.
 
 After installing packages we then verify Streamlit:
 

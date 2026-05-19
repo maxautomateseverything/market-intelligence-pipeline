@@ -25,6 +25,7 @@ save CSV file
    ↓
 print summary
 ```
+In a later iteration we further download ticker metadata (e.g., excahnge). This is to allow us to calculate the actual trading days of the exchange allowing us to calculate accurate features such as daily returns.
 
 # Files Used:
 - config.py

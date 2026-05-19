@@ -80,7 +80,7 @@ def date_validation (df: pd.DataFrame, start_date_string: str, ) -> pd.DataFrame
         print(f"[INFO] Rows are before the start date {len(invalid_rows)} ")
 
     # Drop NaT rows and rows before start date.
-    cleaned_df = raw_df[raw_df["date"] >= start_date]
+    cleaned_df = raw_df[raw_df["date"] >= start_date].copy()
 
     rows_dropped = original_row_count - len(cleaned_df)
 
@@ -153,6 +153,11 @@ def drop_duplicates (df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     original_row_count = len(raw_df)
     print(f"[INFO] Raw rows {original_row_count}")
 
+    raw_df["downloaded_at"] = pd.to_datetime(
+    raw_df["downloaded_at"],
+    errors="coerce"
+    )
+
     # Sorts by downloaded at in descening order - puts more recent at top.
     # Drops duplciate rows keeping first instance (most recent)
     cleaned_df = (raw_df. sort_values("downloaded_at", ascending=False)
@@ -189,7 +194,7 @@ def ticker_validation (df: pd.DataFrame, expected_tickers: list[str]) -> pd.Data
     missing_tickers = sorted(expected_tickers_set - actual_tickers_set)
 
     if missing_tickers:
-        raise TypeError(f"[ERROR] Expected tickers missing from data: {missing_tickers}")
+        raise (f"[WARNING] Expected tickers missing from data: {missing_tickers}")
     else:
         print("[INFO] All expected tickers present")
     
@@ -292,6 +297,7 @@ def ohlc_logic (df:pd.DataFrame) -> pd.DataFrame:
     return cleaned_df
     
 # Sort and reindex dataframe.
+# Kind of useless because the SQL table by deifnition has no order.
 def time_series_sort (df: pd.DataFrame, ticker: str, date: str, earliest_first) -> pd.DataFrame:
 
     print("\n   [START] TICKER, DATE SORT")
@@ -362,7 +368,15 @@ def insert_clean_prices(cleaned_df: pd.DataFrame) -> None:
                 source = EXCLUDED.source    
                 """)
     
-    con.close
+    preview = con.sql("""
+                SELECT *
+                FROM clean_prices
+                LIMIT 5
+                """)
+
+    print(preview)
+
+    con.close()
 
     print("[DONE] Data inserted, table updated")
 
@@ -382,6 +396,21 @@ def reporting() -> None:
 
     print("\n   [START] Date range and row count report:")
     print(report)
+
+    dup_report = con.sql("""
+                        SELECT
+                            date, ticker,
+                         COUNT(*) as duplicate_count
+                        FROM clean_prices
+                         GROUP BY
+                            date, ticker
+                         HAVING COUNT(*) > 1
+                        """)
+
+    print("\n   [START] Duplicate row check")
+    print(dup_report)
+    
+    con.close()
 
     
 

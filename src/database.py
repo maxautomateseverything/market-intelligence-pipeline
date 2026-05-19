@@ -3,6 +3,30 @@ import pandas as pd
 
 from src.config import DATABASE_PATH
 
+# Function to check whether table exists.
+# Use parameterised ? to avoid SQL injection.
+# Use try adn finally to close connection even if SQL query errors.
+def table_exists (table_name: str) -> bool:
+
+    con = duckdb.connect(DATABASE_PATH)
+
+    try:
+        # Look insiude DuckDB metadata table for raw_prices table.
+        # Fetch the first result from that query.
+        # Get the first value from the returned tuple.
+        # Convert into boolean taking True if greater than 0 and False if not.
+        exists = con.execute("""
+            SELECT COUNT(*)
+            FROM information_schema.tables
+            WHERE table_name = ?  
+        """,
+            [table_name]).fetchone()[0] > 0
+        
+        return exists
+    
+    finally:
+        con.close()
+
 # Create all database tables needed for market pipeline
 # Function is safe to run multiple times through us of IF NOT EXISTS
 def create_tables() -> None:
@@ -11,17 +35,7 @@ def create_tables() -> None:
     print("[START] Connecting to database...")
     con = duckdb.connect(DATABASE_PATH)
 
-    # Look insiude DuckDB metadata table for raw_prices table.
-    # Fetch the first result from that query.
-    # Get the first value from the returned tuple.
-    # Convert into boolean taking True if greater than 0 and False if not.
-    raw_prices_exists = con.execute("""
-        SELECT COUNT(*)
-        FROM information_schema.tables
-        WHERE table_name = 'raw_prices'
-    """).fetchone()[0] > 0
-
-    if raw_prices_exists:
+    if table_exists("raw_prices"):
         print("[INFO] Table raw_prices already exists")
 
     else:
@@ -44,15 +58,28 @@ def create_tables() -> None:
                 )               
                     """)
         print("[DONE] Table raw_prices created")
-    
-    # Check whether clean_prices table exists.
-    clean_prices_exists = con.execute("""
-        SELECT COUNT(*)
-        FROM information_schema.tables
-        WHERE table_name = 'clean_prices'
-    """).fetchone()[0] > 0
 
-    if clean_prices_exists:
+    if table_exists("ticker_metadata"):
+        print("[INFO] Table ticker_metadata already exists")
+
+    else:
+        print("[START] Creating ticker_metadata table...")
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS ticker_metadata (
+                ticker VARCHAR,
+                exchange VARCHAR,
+                quote_type VARCHAR,
+                currency VARCHAR,
+                timezone VARCHAR,
+                short_name VARCHAR,
+                
+                UNIQUE(ticker)
+                )
+                    """)
+
+        print("[DONE] Table ticker_metadata created")
+
+    if table_exists("clean_prices"):
         print("[INFO] Table clean_prices already exists")
 
     else:    
@@ -78,6 +105,7 @@ def create_tables() -> None:
 
     # Create the price_features table.
 
+
     # Create the model_predictions table.
 
     # Create the pipeline_runs table.
@@ -85,6 +113,49 @@ def create_tables() -> None:
     # Close the connection
     con.close()
     print("[DONE] Tables created successfully")
+
+
+def insert_metadata(metadata_df: pd.DataFrame) -> None:
+
+    print("[START] Insert metadata")
+    con = duckdb.connect(DATABASE_PATH)
+
+    df = metadata_df.copy()
+
+    columns = ["ticker","exchange","quote_type","currency","timezone","short_name"]
+
+    df = df[columns]
+
+    con.register("df", df)
+
+    # Insert the data into the table.
+    # We insert using BY NAME which inserts into the respective columsn 
+    # by matching column names.
+    # We use the ON CONFLICT logic and exclude the old data values and
+    # update with the new data values.
+    print("[START] Inserting data")
+    con.execute("""
+        INSERT INTO ticker_metadata BY NAME
+        SELECT
+            ticker,
+            exchange,
+            quote_type,
+            currency,
+            timezone,
+                short_name
+        FROM df
+        ON CONFLICT (ticker) DO UPDATE SET
+                exchange = EXCLUDED.exchange,
+                quote_type = EXCLUDED.quote_type,
+                currency = EXCLUDED.currency,
+                timezone = EXCLUDED.timezone,
+                short_name = EXCLUDED.short_name            
+                """)
+    print("[DONE] Data inserted")
+    
+    con.close()
+    print("[DONE] Tables updated")
+
 
 
 # Insert pandas datafrmae into raw_prices table.
@@ -187,6 +258,23 @@ def read_table(table_name: str) -> pd.DataFrame:
     df = con.sql(f"""
         SELECT *
         FROM {table_name}
+                 """).df()
+    
+    con.close()
+    print(f"[DONE] Read {table_name}")
+    
+    return df
+
+def read_order_table(table_name: str) -> pd.DataFrame:
+
+    print("[START] Connecting to database...")
+    con = duckdb.connect(DATABASE_PATH)
+
+    print(f"[START] Reading {table_name}")
+    df = con.sql(f"""
+        SELECT *
+        FROM {table_name}
+        ORDER BY ticker, date
                  """).df()
     
     con.close()
