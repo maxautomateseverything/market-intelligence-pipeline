@@ -10,7 +10,7 @@ from src.database import read_order_table, read_table
 
 #---RETURNS---#
 
-# Map the mcal exchnage values to the yfinance excahnge values.
+# Map the mcal exchnage values to the yfinance exchange values.
 # Allow us to accurately calculate actual missing data vs holiday days.
 def apply_metadata(clean_df: pd.DataFrame) -> pd.DataFrame:
 
@@ -19,7 +19,7 @@ def apply_metadata(clean_df: pd.DataFrame) -> pd.DataFrame:
     # Read ticker_metadata tables.
     metadata_table_df = read_table("ticker_metadata")
 
-    # Map yfinance excahnge names to mcal names
+    # Map yfinance exchange names to mcal names
     metadata_table_df["calendar"] = metadata_table_df["exchange"].map(EXCHANGE_TO_CALENDAR)
 
     # Inspect missing mappings
@@ -35,7 +35,7 @@ def apply_metadata(clean_df: pd.DataFrame) -> pd.DataFrame:
 
 # Calculate expected previous trading date per calendar lookup
 # This is respective to the specific exchange.
-def build_trading_days_lookup(calendar_name: str, start_date, end_date) -> pd.DataFrame:
+def build_trading_days_lookup(calendar_name: str, days: int, start_date, end_date) -> pd.DataFrame:
 
     # Get the market calendar object
     # For example if calendar_name is "NYSE" it gets the NYSE trading calendar
@@ -63,13 +63,13 @@ def build_trading_days_lookup(calendar_name: str, start_date, end_date) -> pd.Da
     # Creates dataframe called lookup with 3 columns shown below.
     lookup = pd.DataFrame({
         "date": trading_days,
-        "expected_previous_trading_date": trading_days.shift(1),
+        f"expected_previous_{days}d_exchange_calendar": trading_days.shift(days),
         "calendar": calendar_name
     })
 
     return lookup
 
-# Calculate daily returns based on excahnge's actual trading days.
+# Calculate daily returns based on exchange's actual trading days.
 def return_exchange_calendar(metadata_df: pd.DataFrame) -> pd.DataFrame:
 
     date_col = "date"
@@ -92,8 +92,6 @@ def return_exchange_calendar(metadata_df: pd.DataFrame) -> pd.DataFrame:
 
     df[log_col] = np.log(df[price_col] / previous_close)
 
-    df[cum_col] = (1 + df[return_col]).cumprod() - 1
-
     calendar_lookups = []
     start_date = df[date_col].min()
     end_date = df[date_col].max()
@@ -101,11 +99,16 @@ def return_exchange_calendar(metadata_df: pd.DataFrame) -> pd.DataFrame:
     for calendar_name in df["calendar"].dropna().unique():
         lookup = build_trading_days_lookup(
             calendar_name = calendar_name,
+            days = 1,
             start_date = start_date,
             end_date = end_date
         )
 
         calendar_lookups.append(lookup)
+
+    if not calendar_lookups:
+        print("[WARNING] No valid exchange calendars found.")
+        return df
 
     trading_lookup_df = pd.concat(calendar_lookups, ignore_index=True)
 
@@ -115,11 +118,16 @@ def return_exchange_calendar(metadata_df: pd.DataFrame) -> pd.DataFrame:
         how = "left"
     )
 
-    mask = previous_date != df["expected_previous_trading_date"]
+    mask = previous_date != df["expected_previous_1d_exchange_calendar"]
 
-    cols_to_null = [return_col, log_col, cum_col]
+    cols_to_null = [return_col, log_col]
 
-    df.loc[mask, cols_to_null] = pd.NA
+    df.loc[mask, cols_to_null] = np.nan
+
+    df[cum_col] = (
+        df.groupby(group_col)[return_col]
+        .transform(lambda x: (1 + x.fillna(0)).cumprod() - 1)
+    )
 
     return df
 
@@ -145,7 +153,10 @@ def return_no_calendar(clean_df: pd.DataFrame) -> pd.DataFrame:
 
     df[log_col] = np.log(df[price_col] / previous_close)
 
-    df[cum_col] = (1 + df[return_col]).cumprod() - 1
+    df[cum_col] = (
+        df.groupby(group_col)[return_col]
+        .transform(lambda x: (1 + x.fillna(0)).cumprod() - 1)
+    )
 
     return df
 
@@ -183,8 +194,6 @@ def return_business_calendar(clean_df: pd.DataFrame) -> pd.DataFrame:
 
     df[log_col] = np.log(df[price_col] / previous_close)
 
-    df[cum_col] = (1 + df[return_col]).cumprod() - 1
-
     # Calculates what the previous business day should be.
     # e.g., Monday - 1 = Friday.
     expected_previous_date = df[date_col] - pd.tseries.offsets.BDay(1)
@@ -193,11 +202,138 @@ def return_business_calendar(clean_df: pd.DataFrame) -> pd.DataFrame:
     # Rows which they don't match set daily_return to missing.
     mask = previous_date != expected_previous_date
 
-    cols_to_null = [return_col, log_col, cum_col]
+    cols_to_null = [return_col, log_col]
 
-    df.loc[mask, cols_to_null] = pd.NA
+    df.loc[mask, cols_to_null] = np.nan
+
+    df[cum_col] = (
+        df.groupby(group_col)[return_col]
+        .transform(lambda x: (1 + x.fillna(0)).cumprod() - 1)
+    )
 
     return df
+
+def rolling_return(clean_df: pd.DataFrame, calendar: str, days: int) -> pd.DataFrame:
+
+    date_col = "date"
+    group_col = "ticker"
+    price_col = "adj_close"
+
+    past_price = f"adj_close_{days}d_ago_{calendar}"
+    rolling = f"rolling_{days}d_return_{calendar}"
+
+    df = clean_df.copy()
+
+    df[date_col] = pd.to_datetime(df[date_col]).dt.normalize()
+
+    df = df.sort_values([group_col, date_col]).reset_index(drop = True)
+
+    df[rolling] = np.nan
+
+    if calendar == "no_calendar":
+
+        df[past_price] = (
+            df.groupby("ticker")["adj_close"]
+            .shift(days)
+        )
+
+        mask = df[past_price].notna() & (df[past_price] != 0)
+
+        df.loc[mask, rolling] = (
+            df.loc[mask, price_col] / df.loc[mask, past_price] - 1
+        )
+
+    elif calendar == "business_calendar":
+
+        df[f"{days}d_ago_{calendar}"] = (
+            df[date_col] - pd.tseries.offsets.BDay(days)
+        )
+
+        business_lookup = df[[group_col, date_col, price_col]].copy()
+
+        business_lookup = business_lookup.rename(
+            columns = {
+                date_col: f"{days}d_ago_{calendar}",
+                price_col: past_price
+            }
+        )
+
+        df = df.merge(
+            business_lookup,
+            on = [group_col, f"{days}d_ago_{calendar}"],
+            how = "left"
+        )
+
+        mask = df[past_price].notna() & (df[past_price] != 0)
+
+        df.loc[mask, rolling] = (
+            df.loc[mask, price_col] / df.loc[mask, past_price] - 1
+        )
+
+    elif calendar == "exchange_calendar":
+
+        target_date_col = f"{days}d_ago_{calendar}"
+        expected_col = f"expected_previous_{days}d_exchange_calendar"
+
+        calendar_lookups = []
+
+        for calendar_name in df["calendar"].dropna().unique():
+            lookup = build_trading_days_lookup(
+                calendar_name = calendar_name,
+                days = days,
+                start_date = df[date_col].min(),
+                end_date = df[date_col].max()
+            )
+
+            calendar_lookups.append(lookup)
+
+        if not calendar_lookups:
+            print("[WARNING] No valid exchange calendars found.")
+            return df
+
+        exchange_lookup = pd.concat(calendar_lookups, ignore_index = True)
+
+        df = df.merge(
+            exchange_lookup,
+            on = ["calendar", "date"],
+            how = "left"
+        )
+
+        df = df.rename(
+            columns={
+                expected_col: target_date_col
+            }
+        )
+
+        exchange_price_lookup = df[[group_col, date_col, price_col]].copy()
+
+        exchange_price_lookup = exchange_price_lookup.rename(
+            columns = {
+                date_col: target_date_col,
+                price_col: past_price
+            }
+        )
+
+        df = df.merge(
+            exchange_price_lookup,
+            on = [group_col, target_date_col],
+            how = "left"
+        )
+
+        mask = df[past_price].notna() & (df[past_price] != 0)
+
+        df.loc[mask, rolling] = (
+            df.loc[mask, price_col] / df.loc[mask, past_price] - 1
+        )
+
+    else:
+        raise ValueError(
+            "calendar must be one of: 'no_calendar', 'business_calendar', 'exchange_calendar'"
+        )
+
+    return df
+    
+    
 
 
 
@@ -209,6 +345,26 @@ def main():
 
     print(clean_df.head(10))
 
-    return_df = return_no_calendar(clean_df)
+    metadata_df = apply_metadata(clean_df)
 
+    print(metadata_df.head(10))
+
+    return_1_df = return_no_calendar(metadata_df)
+
+    return_2_df = return_business_calendar(return_1_df)
+
+    return_3_df = return_exchange_calendar(return_2_df)
     
+    rolling_1_df = rolling_return(return_3_df, "no_calendar", 7)
+
+    rolling_2_df = rolling_return(rolling_1_df, "business_calendar", 7)
+
+    rolling_3_df = rolling_return(rolling_2_df, "exchange_calendar", 7)
+
+    rolling_3_df.to_csv(
+    r"C:\Users\maxan\OneDrive\Desktop\0. Personal Projects\market-intelligence-pipeline\data\inspect\returns_inspect.csv",
+    index=False
+    )
+
+if __name__ == "__main__":
+    main()  
