@@ -8,6 +8,155 @@ from src.database import read_order_table, read_table
 
 #poo - lissi
 
+#--RETURNS--#
+
+def prepare_df(input_df: pd.DataFrame) -> pd.DataFrame:
+
+    df = input_df.copy()
+
+    # convert to proper pandas datetime values.
+    # normlaises all dates to the same time (00:00:00).
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+
+    # sorts value by ticekr first then date.
+    # resets row numbers after sorting.
+    df = df.sort_values(["ticker", "date"]).reset_index(drop = True)
+
+    return df
+
+def add_lagged_price(
+        input_df: pd.DataFrame, 
+        days: int,
+        calendar: str
+        ) -> pd.DataFrame:
+
+    lag_price_col = f"adj_close_{days}d_ago_{calendar}"
+    
+    expected_date_col = f"date_{days}d_ago_{calendar}"
+
+    date_col = "date"
+    group_col = "ticker"
+    price_col = "adj_close"
+
+    df = input_df.copy()
+
+    if calendar == "no_calendar":
+
+        df[lag_price_col] = (
+            df.groupby(group_col)[price_col].shift(days)
+        )
+
+        print(f"[INFO] Calendar: {calendar}, Days_ago: {days} - ADDED")
+
+    elif calendar == "business_calendar":
+
+        df[expected_date_col] = (
+            df[date_col] - pd.tseries.offsets.BDay(days)
+        )
+
+        business_lookup = df[[group_col, date_col, price_col]].copy()
+
+        business_lookup = business_lookup.rename(
+            columns = {
+                date_col: expected_date_col,
+                price_col: lag_price_col
+            }
+        )
+
+        df = df.merge(
+            business_lookup,
+            on = [group_col, expected_date_col],
+            how = "left"
+        )
+
+        print(f"[INFO] Calendar: {calendar}, Days_ago: {days} - ADDED")
+
+    elif calendar == "exchange_calendar":
+
+        metadata_table_df = read_table("ticker_metadata")
+
+        # Map yfinance exchange names to mcal names
+        metadata_table_df["market_calendar"] = metadata_table_df["exchange"].map(EXCHANGE_TO_CALENDAR)
+
+        # Inspect missing mappings
+        print(metadata_table_df[metadata_table_df["market_calendar"].isna()])
+
+        df = df.merge(
+        metadata_table_df[[group_col, "market_calendar"]],
+        on = group_col,
+        how = "left"
+        )
+
+        calendar_lookups = []
+        start_date = df[date_col].min()
+        end_date = df[date_col].max()
+
+        for calendar_name in df["market_calendar"].dropna().unique():
+            
+            calendar = mcal.get_calendar(calendar_name)
+
+            schedule = calendar.schedule(
+                start_date = start_date,
+                end_date = end_date
+            )
+
+            trading_days = pd.Series(
+                pd.to_datetime(schedule.index).tz_localize(None),
+                name="date"
+            )
+
+            lookup = pd.DataFrame({
+                "date": trading_days,
+                expected_date_col: trading_days.shift(days),
+                "calendar":calendar_name
+            })
+
+            calendar_lookups.append(lookup)
+
+        if not calendar_lookups:
+            raise ValueError(
+                "[ERROR] No valid mapped exchange calendar found"
+            )
+
+        exchange_date_lookup = pd.concat(calendar_lookups, ignore_index = True)
+
+        df = df.merge(
+            exchange_date_lookup,
+            on = ["calendar", date_col],
+            how = "left"
+        )
+
+        exchange_price_lookup = df[[group_col, date_col, price_col]].copy()
+
+        exchange_price_lookup = exchange_price_lookup.rename(
+            columns={
+                date_col: expected_date_col,
+                price_col: lag_price_col
+            }
+        )
+
+        df = df.merge(
+            exchange_price_lookup,
+            on=[group_col, expected_date_col],
+            how="left",
+            validate="many_to_one"
+        )
+
+        print(f"[INFO] Calendar: {calendar}, Days_ago: {days} - ADDED")
+
+    else:
+        raise ValueError(
+            "[ERROR] Calendar must be one of: 'no_calendar', 'business_calendar', 'exchange_calendar'"
+        )
+
+    return df
+
+
+
+
+
+
+
 #---RETURNS---#
 
 # Map the mcal exchnage values to the yfinance exchange values.

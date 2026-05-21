@@ -64,3 +64,9 @@ In calculating returns it should be noted that one consideration was taken into 
 This worked great, the results of whch can be seen in the data/inspect/returns.inspect.csv file. The exchange calendar returns would have been used if we had not had to remove a row due to OCLH logic in the transform.py step. The single row that was removed was 02.03.2026 for RPI.L ticker that had an open stock value lower than the apparent low value for that trading day.
 
 Additionally, since quality is not a huge deal and this was a learning project we opted for the more simple no calendar returns since that would suffice for this project and it would be easier for time-series forcasting as we wouldn't have any missing values.
+
+## Rolling Returns
+
+The same calendar concept applies here.
+
+We created a resusable rolling return function that allows us to reuse the function for variosu calendars and for various return windows (e.g., 7d or 30d).
