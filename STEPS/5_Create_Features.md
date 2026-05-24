@@ -16,14 +16,14 @@ Features.py creates the following features:
 - cumulative_returns
 - rolling_7d_return
 - rolling_30d_return
-- rolling_30d_volatility
+- lag_1_return
+- lag_5_return
 - moving_avg_20
 - moving_avg_50
 - price_vs_ma20
 - relative_volume
+- rolling_30d_volatility
 - drawdown
-- lag_1_return
-- lag_5_return
 - target_next_day_return (prediction)
 - target_dreiction (prediction)
 
@@ -42,31 +42,40 @@ Every feature should satisfy at least on of these purposes:
 - Predict future returns (ML features) -> lagged returns.
 - Feed ML model (targets) -> target variables.
 
-## Daily, Log, and Cumulative Return
+## Return Features
 
-We use adj_close to calculate return since adj_close inludes adkjustments for various corporate actions such as stock splits, dividends, and corporate spinoffs.
+Across all calculations we use adj_close as current price as it includes adjustments for various corporate actions such as:
+- stock splits.
+- dividends.
+- corporate spinoffs.
 
-We calculate return as adj_close at t divided by adj_close at t-1 minus 1, giving the decimal equivalent of the percent (i.e., 0.2 = 20%)
+The function `generate_return_features` generates the following return features:
+- daily return or simple 1 day return.
+- log return.
+- rolling returns (across intervals configured in `ROLLING_INTERVALS`).
+- cumulative returns.
+- lagged returns (across intervals configured in `LAGGED_INTERVALS`)
 
-We calculate log return as the natural log of adj_close at t divided by adj_close at t-1.
+The function `generate_return_features` takes 4 input variables:
+- input_df: pandas dataframe containing clean prices data.
+- calendars: list of string values configured in `CALENDARS`.
+- rolling_windows: list of integer values configured in `ROLLING_WINDOWS`.
+- lagged_windows: list of integer values configured in `LAGGED_WINDOWS`.
 
-The features provide answers to the following questions:
-- simple return: how much did the wealth change in a day.
-- log return: what continuously compounded growth rate would cause this price change in a day.
+### Calendars
 
-Simple return acts as the intuitive return whcih is useful for dashboards and human understanding while  log return is more mathematically convenient and good for modelling.
+One thing to note is the consideration of various calendars of which the calculations are based. We cosnider three types of calendars:
+- no_calendar
+- business_calendar
+- exchange_ calendar
 
-In calculating returns it should be noted that one consideration was taken into account - single day returns are based on the previous possible trading day rather than previous calendar or business day (markets close on additional days not included). We therefore outputted 3 returns to analyse:
-- no calendar returns: returns simply based on the previous row.
-- busienss calendar returns: returns simply based on the previous business day.
-- excahnge calendar returns: returns simply baed on the previous trading day for that exchange.
+`no_calendar` assumes that there are no missing dates in the data, taking each sequential row at face value.
 
-This worked great, the results of whch can be seen in the data/inspect/returns.inspect.csv file. The exchange calendar returns would have been used if we had not had to remove a row due to OCLH logic in the transform.py step. The single row that was removed was 02.03.2026 for RPI.L ticker that had an open stock value lower than the apparent low value for that trading day.
+`business_calendar` takes into account weekends basing returns simply on the previous business day. This will capture possible missing rows, e.g., a random wednesday missing preventing you from calculating returns that require that days adj_close.
 
-Additionally, since quality is not a huge deal and this was a learning project we opted for the more simple no calendar returns since that would suffice for this project and it would be easier for time-series forcasting as we wouldn't have any missing values.
+`exchange_calendar` takes into account additional holidays and closures of the specific exchange of the stock, allowing true representation of truly missing dates.
 
-## Rolling Returns
 
-The same calendar concept applies here.
 
-We created a resusable rolling return function that allows us to reuse the function for variosu calendars and for various return windows (e.g., 7d or 30d).
+
+

@@ -82,3 +82,11 @@ EXCHANGE_TO_CALENDAR = {
     "ASX": "ASX",
     "FRA": "XFRA",
 }
+
+## RETURNS CONFIG
+
+CALENDARS = ["no_calendar", "business_calendar", "exchange_calendar"]
+
+ROLLING_WINDOWS = [7, 30]
+
+LAGGED_WINDOWS = [1, 5]
