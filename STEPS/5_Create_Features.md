@@ -11,15 +11,15 @@ price_features
 ```
 
 Features.py creates the following features:
-- daily_return
-- log_return
-- cumulative_returns
-- rolling_7d_return
-- rolling_30d_return
-- lag_1_return
-- lag_5_return
-- moving_avg_20
-- moving_avg_50
+- daily_return (made)
+- log_return (made)
+- cumulative_returns (made)
+- rolling_7d_return (made)
+- rolling_30d_return (made)
+- lag_1_return (made)
+- lag_5_return (made)
+- moving_avg_20 (made)
+- moving_avg_50 (made)
 - price_vs_ma20
 - relative_volume
 - rolling_30d_volatility

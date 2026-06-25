@@ -622,6 +622,103 @@ def generate_moving_averages(
 
         return df    
 
+#--TECHNICAL / MODEL FEATURES--#
+
+def calculate_ma_dependents(
+        input_df: pd.DataFrame,
+        calendar: str,
+        ma_window: int,
+        value_col: str, 
+        feature: str # choose options like relative_volume or price_vs_ma20
+        ) -> pd.DataFrame:
+    
+    df = input_df.copy()
+
+    df = prepare_df(df)
+    
+    ma_col = f"{calendar}_{ma_window}d_{value_col}_ma"
+
+    if ma_col in df.columns:
+
+        print(f"[INFO] {ma_col} exists: Proceeding")
+    
+    else:
+
+        generate_moving_averages(
+            input_df = df,
+            value_columns = [value_col],
+            calendars = [calendar],
+            windows = [ma_window]
+        )
+    
+    feature_col = f"{feature}_{calendar}"
+
+    df[feature_col] = np.nan
+
+    valid = (
+        df[value_col].notna()
+        & df[ma_col].notna()
+        & (df[ma_col] != 0)
+    )
+
+    df.loc[valid, feature_col] = df.loc[valid, feature_col] / df.loc[valid, ma_col] - 1
+
+    return df
+
+def calculate_rolling_volatility(
+        input_df: pd.DataFrame,
+        calendar: str,
+        window: int,
+    ) -> pd.DataFrame:
+
+    df = input_df.copy()
+
+    df = prepare_df(df)
+
+    return_col = f"1d_{calendar}_simple_return"
+
+    if return_col in df.columns:
+
+        print(f"[INFO] {return_col} exists: Proceeding")
+    
+    else:
+
+        calculate_return_from_lagged_price(
+            days = 1,
+            calendar = calendar,
+            return_type = "simple"
+        )
+    
+    vol_col = f"{calendar}_{window}d_rolling_volatility"
+
+    df[vol_col] = (
+        df.groupby("ticker")[return_col]
+        .rolling(window = window, min_periods = window)
+        .std()
+        .reset_index(level = 0, drop = True)
+    )
+
+    return df
+
+def add_drawdown(
+        input_df: pd.DataFrame,
+        value_col: str,
+        calendar: str
+        ) -> pd.DataFrame:
+
+    running_max_col = f"{value_col}_running_max"
+
+    drawdown_col = f"{value_col}_drawdown_{calendar}"
+
+    df[running_max_col] = df.groupby("ticker")[value_col].cummax()
+
+    df[drawdown_col] = df[value_col] / df[running_max_col] - 1
+
+    df = df.drop(columns = [running_max_col], errors="ignore")
+
+return df
+
+
 def main():
 
     clean_df = read_order_table("clean_prices")
@@ -642,3 +739,4 @@ def main():
 
 if __name__ == "__main__":
     main()  
+
