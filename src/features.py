@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import duckdb
 
 # Used to retrieve real stock market calendars.
 import pandas_market_calendars as mcal
@@ -9,7 +10,8 @@ from src.config import (
     CALENDARS,
     ROLLING_WINDOWS,
     LAGGED_WINDOWS,
-    MA_WINDOWS
+    MA_WINDOWS,
+    DATABASE_PATH
 )
 from src.database import (
     read_table,
@@ -43,7 +45,19 @@ def add_lagged_value(
         value_col: str
         ) -> pd.DataFrame:
 
-    lag_value_col = f"{value_col}_{days}d_ago_{calendar}"
+    if days > 0:
+
+        lag_value_col = f"{value_col}_{days}d_ago_{calendar}"
+
+    elif days < 0:
+
+        forward_day = abs(days)
+
+        lag_value_col = f"{value_col}_{forward_day}d_ahead_{calendar}"
+
+    else:
+
+        raise ValueError("You cannot shift by 0")
     
     # Create temp column name that we drop later for expected
     # past date, no_calendar does not use this since it simply
@@ -345,7 +359,7 @@ def calculate_return_from_lagged_price(
         )
 
     # Drop the lagged price columns to keep dataframe clean.
-    df = df.drop(columns = [lag_price_col])
+    df = df.drop(columns = [lag_price_col], errors="ignore")
 
     return df
 
@@ -564,7 +578,7 @@ def generate_moving_averages(
                             .reset_index(level = 0, drop = True)
                         )
 
-                    elif calendar == "exchange_calendar" or calendar == "business_calendar":
+                    elif calendar in ["exchange_calendar", "business_calendar"]:
 
                         # Will contain a list of columns that will be used to calculate moving average.
                         # moving average includes the current days value as window - 1 days prior.
@@ -613,7 +627,7 @@ def generate_moving_averages(
                         )
 
                         # Clean dataframe and drop temp columns.
-                        df = df.drop(columns = temp_lag_cols)
+                        df = df.drop(columns = temp_lag_cols, errors="ignore")
                     
                     # Sanity check chosen calendar type is valid.
                     else:
@@ -626,7 +640,7 @@ def generate_moving_averages(
 
 def calculate_ma_dependents(
         input_df: pd.DataFrame,
-        calendar: str,
+        calendars: list[str],
         ma_window: int,
         value_col: str, 
         feature: str # choose options like relative_volume or price_vs_ma20
@@ -635,89 +649,421 @@ def calculate_ma_dependents(
     df = input_df.copy()
 
     df = prepare_df(df)
+
+    for calendar in calendars:
     
-    ma_col = f"{calendar}_{ma_window}d_{value_col}_ma"
+        ma_col = f"{calendar}_{ma_window}d_{value_col}_ma"
 
-    if ma_col in df.columns:
+        if ma_col in df.columns:
 
-        print(f"[INFO] {ma_col} exists: Proceeding")
-    
-    else:
+            print(f"[INFO] {ma_col} exists: Proceeding")
+        
+        else:
 
-        generate_moving_averages(
-            input_df = df,
-            value_columns = [value_col],
-            calendars = [calendar],
-            windows = [ma_window]
+            df = generate_moving_averages(
+                input_df = df,
+                value_columns = [value_col],
+                calendars = [calendar],
+                windows = [ma_window]
+            )
+        
+        feature_col = f"{feature}_{calendar}"
+
+        df[feature_col] = np.nan
+
+        valid = (
+            df[value_col].notna()
+            & df[ma_col].notna()
+            & (df[ma_col] != 0)
         )
-    
-    feature_col = f"{feature}_{calendar}"
 
-    df[feature_col] = np.nan
+        if feature == "price_vs_ma20" and value_col == "adj_close":
 
-    valid = (
-        df[value_col].notna()
-        & df[ma_col].notna()
-        & (df[ma_col] != 0)
-    )
+            df.loc[valid, feature_col] = df.loc[valid, value_col] / df.loc[valid, ma_col] - 1
 
-    df.loc[valid, feature_col] = df.loc[valid, feature_col] / df.loc[valid, ma_col] - 1
+        elif feature == "relative_volume" and value_col == "volume":
+
+            df.loc[valid, feature_col] = df.loc[valid, value_col] / df.loc[valid, ma_col]
+
+            df = df.drop(columns=[ma_col], errors="ignore")
+
+        else:
+
+            raise ValueError("Choose valid combination: feature == 'price_vs_ma20' and value_col == 'adj_close' OR feature == 'relative_volume' and value_col == 'volume'")
 
     return df
 
 def calculate_rolling_volatility(
         input_df: pd.DataFrame,
-        calendar: str,
         window: int,
+        calendars: list[str]
     ) -> pd.DataFrame:
 
     df = input_df.copy()
 
     df = prepare_df(df)
 
-    return_col = f"1d_{calendar}_simple_return"
+    for calendar in calendars:
 
-    if return_col in df.columns:
+        return_col = f"1d_{calendar}_simple_return"
 
-        print(f"[INFO] {return_col} exists: Proceeding")
-    
-    else:
+        if return_col in df.columns:
 
-        calculate_return_from_lagged_price(
-            days = 1,
-            calendar = calendar,
-            return_type = "simple"
+            print(f"[INFO] {return_col} exists: Proceeding")
+        
+        else:
+
+            df = calculate_return_from_lagged_price(
+                input_df = df,
+                days = 1,
+                calendar = calendar,
+                return_type = "simple"
+            )
+        
+        vol_col = f"{calendar}_{window}d_rolling_volatility"
+
+        df[vol_col] = (
+            df.groupby("ticker")[return_col]
+            .rolling(window = window, min_periods = window)
+            .std()
+            .reset_index(level = 0, drop = True)
         )
-    
-    vol_col = f"{calendar}_{window}d_rolling_volatility"
-
-    df[vol_col] = (
-        df.groupby("ticker")[return_col]
-        .rolling(window = window, min_periods = window)
-        .std()
-        .reset_index(level = 0, drop = True)
-    )
 
     return df
 
 def add_drawdown(
         input_df: pd.DataFrame,
         value_col: str,
-        calendar: str
+        calendars: list[str]
         ) -> pd.DataFrame:
 
-    running_max_col = f"{value_col}_running_max"
+    df = input_df.copy()
 
-    drawdown_col = f"{value_col}_drawdown_{calendar}"
+    df = prepare_df(df)
 
-    df[running_max_col] = df.groupby("ticker")[value_col].cummax()
+    for calendar in calendars:
 
-    df[drawdown_col] = df[value_col] / df[running_max_col] - 1
+        running_max_col = f"{value_col}_running_max"
 
-    df = df.drop(columns = [running_max_col], errors="ignore")
+        drawdown_col = f"{value_col}_drawdown_{calendar}"
 
-return df
+        df[running_max_col] = df.groupby("ticker")[value_col].cummax()
 
+        df[drawdown_col] = df[value_col] / df[running_max_col] - 1
+
+        df = df.drop(columns = [running_max_col], errors="ignore")
+        
+    return df
+
+def add_prediction_targets(
+        input_df: pd.DataFrame,
+        calendars: list[str]
+        ) -> pd.DataFrame:
+
+    df = input_df.copy()
+
+    df = prepare_df(df)
+
+    price_col = "adj_close"
+
+    day = -1
+
+    for calendar in calendars:
+
+        df = add_lagged_value(
+            input_df = df,
+            days = day,
+            calendar = calendar,
+            value_col = price_col
+        )
+
+        forward_day = abs(day)
+
+        expected_future_price = f"{price_col}_{forward_day}d_ahead_{calendar}"
+
+        target_next_day_col = f"target_next_day_return_{calendar}"
+
+        valid = (
+            df[expected_future_price].notna()
+            & (df[price_col] != 0)
+            & df[price_col].notna())
+
+        df[target_next_day_col] = np.nan
+
+        df.loc[valid, target_next_day_col] = (
+            df.loc[valid, expected_future_price] / df.loc[valid, price_col] - 1
+        )
+
+        df = df.drop(columns = [expected_future_price], errors = "ignore")
+
+        target_direction_col = f"target_direction_{calendar}"
+
+        df[target_direction_col] = np.nan
+
+        df.loc[valid, target_direction_col] = np.where(
+            df.loc[valid, target_next_day_col] > 0,
+            1,
+            0
+        )
+
+    return df
+
+def generate_remaining_features(
+        input_df: pd.DataFrame,
+        calendars: list[str],
+        ) -> pd.DataFrame:
+
+    df = input_df.copy()
+
+    df = prepare_df(df)
+
+    price_v_ma_df = calculate_ma_dependents(
+        input_df = df,
+        calendars = calendars,
+        ma_window = 20,
+        value_col = "adj_close",
+        feature = "price_vs_ma20"
+    )
+
+    relative_volume_df = calculate_ma_dependents(
+        input_df = price_v_ma_df,
+        calendars = calendars,
+        ma_window = 20,
+        value_col = "volume",
+        feature = "relative_volume"
+    )
+
+    rolling_volatility_df = calculate_rolling_volatility(
+        input_df = relative_volume_df,
+        window = 30,
+        calendars = calendars
+    )
+
+    drawdown_df = add_drawdown(
+        input_df = rolling_volatility_df,
+        value_col = "adj_close",
+        calendars = calendars
+    )
+
+    prediction_df = add_prediction_targets(
+        input_df = drawdown_df,
+        calendars = calendars
+    )
+
+    return prediction_df
+
+def keep_and_rename_expected_feature_columns(
+        input_df: pd.DataFrame,
+        calendars: list[str],
+        rolling_windows: list[int],
+        lagged_windows: list[int],
+        ma_windows: list[int],
+        strict: bool = True
+    ) -> pd.DataFrame:
+
+    df = input_df.copy()
+
+    base_cols = [
+        "ticker",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj_close",
+        "volume"
+    ]
+
+    rename_map = {}
+
+    for calendar in calendars:
+
+        rename_map[f"1d_{calendar}_simple_return"] = f"daily_return_{calendar}"
+
+        rename_map[f"1d_{calendar}_log_return"] = f"log_return_{calendar}"
+
+        rename_map[f"cumulative_returns_{calendar}"] = f"cumulative_returns_{calendar}"
+
+        for rolling_window in rolling_windows:
+
+            rename_map[f"{rolling_window}d_{calendar}_rolling_return"] = (
+                f"rolling_{rolling_window}d_return_{calendar}"
+            )
+
+        for lagged_window in lagged_windows:
+
+            rename_map[f"{lagged_window}d_{calendar}_lagged_returns"] = (
+                f"lag_{lagged_window}_return_{calendar}"
+            )
+
+        for ma_window in ma_windows:
+
+            rename_map[f"{calendar}_{ma_window}d_adj_close_ma"] = (
+                f"moving_avg_{ma_window}_{calendar}"
+            )
+
+        rename_map[f"price_vs_ma20_{calendar}"] = f"price_vs_ma20_{calendar}"
+
+        rename_map[f"relative_volume_{calendar}"] = f"relative_volume_{calendar}"
+
+        rename_map[f"{calendar}_30d_rolling_volatility"] = (
+            f"rolling_30d_volatility_{calendar}"
+        )
+
+        rename_map[f"adj_close_drawdown_{calendar}"] = f"drawdown_{calendar}"
+
+        rename_map[f"target_next_day_return_{calendar}"] = (
+            f"target_next_day_return_{calendar}"
+        )
+
+        rename_map[f"target_direction_{calendar}"] = f"target_direction_{calendar}"
+
+        expected_columns = base_cols + list(rename_map.keys())
+
+        missing_columns = [
+            column for column in expected_columns
+            if column not in df.columns
+        ]
+
+        if missing_columns:
+
+            message = (
+                "[ERROR] Some expected final columns are missing:\n"
+                + "\n".join(missing_columns)
+            )
+
+            if strict:
+                raise ValueError(message)
+
+            print(message)
+
+        existing_columns = [
+            column for column in expected_columns
+            if column in df.columns
+        ]
+
+        df = df[existing_columns].copy()
+
+        df.rename(columns=rename_map)
+
+        return df
+
+def build_price_feature_columns(
+        calendars: list[str],
+        rolling_windows: list[int],
+        lagged_windows: list[int],
+        ma_windows: list[int]
+        ) -> dict[str, str]:
+
+    columns = {}
+
+    for calendar in calendars:
+
+        columns[f"daily_return_{calendar}"] = "DOUBLE"
+        columns[f"log_return_{calendar}"] = "DOUBLE"
+        columns[f"cumulative_returns_{calendar}"] = "DOUBLE"
+
+        for window in rolling_windows:
+            columns[f"rolling_{window}d_return_{calendar}"] = "DOUBLE"
+
+        for window in lagged_windows:
+            columns[f"lag_{window}_return_{calendar}"] = "DOUBLE"
+
+        for window in ma_windows:
+            columns[f"moving_avg_{window}_{calendar}"] = "DOUBLE"
+
+        columns[f"price_vs_ma20_{calendar}"] = "DOUBLE"
+        columns[f"relative_volume_{calendar}"] = "DOUBLE"
+        columns[f"rolling_30d_volatility_{calendar}"] = "DOUBLE"
+        columns[f"drawdown_{calendar}"] = "DOUBLE"
+        columns[f"target_next_day_return_{calendar}"] = "DOUBLE"
+        columns[f"target_direction_{calendar}"] = "INTEGER"
+
+    return columns
+
+def build_insert_sql_parts(columns: list[str]) -> tuple[str, str]:
+
+    insert_columns_sql = ",\n                ".join(columns)
+
+    update_set_sql = ",\n                ".join(
+        f"{column} = EXCLUDED.{column}"
+        for column in columns
+        if column not in ["date", "ticker"]
+    )
+
+    return insert_columns_sql, update_set_sql
+
+def insert_price_features(features_df: pd.DataFrame) -> None:
+
+    print("\n   [START] INSERT PRICE FEATURES INTO DB")
+
+    print("[START] Connecting to database...")
+    con = duckdb.connect(DATABASE_PATH)
+
+    print("[INSPECT] Incoming columns:")
+    print(features_df.columns.tolist())
+
+    base_columns = [
+        "date",
+        "ticker",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adj_close",
+        "volume",
+        "downloaded_at",
+        "source"
+    ]
+
+    feature_columns = build_price_feature_columns(
+        calendars=CALENDARS,
+        rolling_windows=ROLLING_WINDOWS,
+        lagged_windows=LAGGED_WINDOWS,
+        ma_windows=MA_WINDOWS
+    )
+
+    expected_columns = base_columns + list(feature_columns.keys())
+
+    missing_columns = [
+        column for column in expected_columns
+        if column not in features_df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            "[ERROR] Cannot insert price features. Missing columns:\n"
+            + "\n".join(missing_columns)
+        )
+
+    df = features_df[expected_columns].copy()
+
+    insert_columns_sql, update_set_sql = build_insert_sql_parts(expected_columns)
+
+    print("[START] Inserting data...")
+
+    con.register("df", df)
+
+    con.execute(f"""
+            INSERT INTO price_features BY NAME
+            SELECT
+                {insert_columns_sql}
+            FROM df
+            ON CONFLICT (date, ticker) DO UPDATE SET
+                {update_set_sql}
+                """)
+
+    preview = con.sql("""
+                SELECT *
+                FROM price_features
+                LIMIT 5
+                """)
+
+    print(preview)
+
+    con.close()
+
+    print("[DONE] Data inserted, table updated")
 
 def main():
 
@@ -736,6 +1082,22 @@ def main():
         windows = MA_WINDOWS,
         calendars = CALENDARS       
     )
+
+    further_features_df = generate_remaining_features(
+        input_df = ma_df,
+        calendars = CALENDARS
+    )
+
+    final_df = keep_and_rename_expected_feature_columns(
+        input_df = further_features_df,
+        calendars = CALENDARS,
+        rolling_windows = ROLLING_WINDOWS,
+        lagged_windows = LAGGED_WINDOWS,
+        ma_windows = MA_WINDOWS,
+        strict = True
+    )
+
+
 
 if __name__ == "__main__":
     main()  

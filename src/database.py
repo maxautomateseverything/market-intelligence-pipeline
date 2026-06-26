@@ -1,7 +1,13 @@
 import duckdb
 import pandas as pd
 
-from src.config import DATABASE_PATH
+from src.config import (
+    DATABASE_PATH,
+    CALENDARS,
+    ROLLING_WINDOWS,
+    LAGGED_WINDOWS,
+    MA_WINDOWS
+)
 
 # Function to check whether table exists.
 # Use parameterised ? to avoid SQL injection.
@@ -26,6 +32,59 @@ def table_exists (table_name: str) -> bool:
     
     finally:
         con.close()
+
+def build_price_feature_columns(
+        calendars: list[str],
+        rolling_windows: list[int],
+        lagged_windows: list[int],
+        ma_windows: list[int]
+        ) -> dict[str, str]:
+
+    columns = {}
+
+    for calendar in calendars:
+
+        columns[f"daily_return_{calendar}"] = "DOUBLE"
+
+        columns[f"log_return_{calendar}"] = "DOUBLE"
+
+        columns[f"cumulative_returns_{calendar}"] = "DOUBLE"
+
+        for window in rolling_windows:
+
+            columns[f"rolling_{window}d_return_{calendar}"] = "DOUBLE"
+
+        for window in lagged_windows:
+
+            columns[f"lag_{window}_return_{calendar}"] = "DOUBLE"
+
+        for window in ma_windows:
+
+            columns[f"moving_avg_{window}_{calendar}"] = "DOUBLE"
+
+        columns[f"price_vs_ma20_{calendar}"] = "DOUBLE"
+
+        columns[f"relative_volume_{calendar}"] = "DOUBLE"
+
+        columns[f"rolling_30d_volatility_{calendar}"] = "DOUBLE"
+
+        columns[f"drawdown_{calendar}"] = "DOUBLE"
+
+        columns[f"target_next_day_return_{calendar}"] = "DOUBLE"
+
+        columns[f"target_direction_{calendar}"] = "INTEGER"
+
+    return columns
+
+def build_column_sql(columns: dict[str, str]) -> str:
+
+    column_lines = []
+
+    for column_name, column_type in columns.items():
+
+        column_lines.append(f"{column_name} {column_type}")
+
+    return ",\n".join(column_lines)
 
 # Create all database tables needed for market pipeline
 # Function is safe to run multiple times through us of IF NOT EXISTS
@@ -105,6 +164,39 @@ def create_tables() -> None:
 
     # Create the price_features table.
 
+    if table_exists("price_features"):
+        print("[INFO] Table price_features already exists")
+
+    else:
+
+        print("[START] Creating price_features table...")
+
+        feature_columns = build_price_feature_columns(
+            calendars = CALENDARS,
+            rolling_windows = ROLLING_WINDOWS,
+            lagged_windows = LAGGED_WINDOWS,
+            ma_windows = MA_WINDOWS
+        )
+
+        feature_column_sql = build_column_sql(feature_columns)
+
+        con.execute(f"""
+            CREATE TABLE IF NOT EXISTS price_features (
+                date DATE,
+                ticker VARCHAR,
+                open DOUBLE,
+                high DOUBLE,
+                low DOUBLE,
+                close DOUBLE,
+                adj_close DOUBLE,
+                volume BIGINT,
+                {feature_column_sql},
+
+                UNIQUE(date,ticker)    
+                )
+            """)
+        
+        print("[DONE] Table price_features created")
 
     # Create the model_predictions table.
 
