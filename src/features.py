@@ -918,35 +918,35 @@ def keep_and_rename_expected_feature_columns(
 
         rename_map[f"target_direction_{calendar}"] = f"target_direction_{calendar}"
 
-        expected_columns = base_cols + list(rename_map.keys())
+    expected_columns = base_cols + list(rename_map.keys())
 
-        missing_columns = [
-            column for column in expected_columns
-            if column not in df.columns
-        ]
+    missing_columns = [
+        column for column in expected_columns
+        if column not in df.columns
+    ]
 
-        if missing_columns:
+    if missing_columns:
 
-            message = (
-                "[ERROR] Some expected final columns are missing:\n"
-                + "\n".join(missing_columns)
-            )
+        message = (
+            "[ERROR] Some expected final columns are missing:\n"
+            + "\n".join(missing_columns)
+        )
 
-            if strict:
-                raise ValueError(message)
+        if strict:
+            raise ValueError(message)
 
-            print(message)
+        print(message)
 
-        existing_columns = [
-            column for column in expected_columns
-            if column in df.columns
-        ]
+    existing_columns = [
+        column for column in expected_columns
+        if column in df.columns
+    ]
 
-        df = df[existing_columns].copy()
+    df = df[existing_columns].copy()
 
-        df.rename(columns=rename_map)
+    df = df.rename(columns=rename_map)
 
-        return df
+    return df
 
 def build_price_feature_columns(
         calendars: list[str],
@@ -1003,7 +1003,7 @@ def insert_price_features(features_df: pd.DataFrame) -> None:
     print("[INSPECT] Incoming columns:")
     print(features_df.columns.tolist())
 
-    base_columns = [
+    base_cols = [
         "date",
         "ticker",
         "open",
@@ -1012,8 +1012,7 @@ def insert_price_features(features_df: pd.DataFrame) -> None:
         "close",
         "adj_close",
         "volume",
-        "downloaded_at",
-        "source"
+        
     ]
 
     feature_columns = build_price_feature_columns(
@@ -1023,7 +1022,7 @@ def insert_price_features(features_df: pd.DataFrame) -> None:
         ma_windows=MA_WINDOWS
     )
 
-    expected_columns = base_columns + list(feature_columns.keys())
+    expected_columns = base_cols + list(feature_columns.keys())
 
     missing_columns = [
         column for column in expected_columns
@@ -1097,7 +1096,7 @@ def main():
         strict = True
     )
 
-
+    insert_price_features(final_df)
 
 if __name__ == "__main__":
     main()  

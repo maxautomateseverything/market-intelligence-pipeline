@@ -1,4 +1,5 @@
 import pandas as pd
+import duckdb
 
 from src.config import RAW_PRICES_FILE, METADATA_FILE
 from src.database import create_tables, insert_raw_prices, read_table, insert_metadata
