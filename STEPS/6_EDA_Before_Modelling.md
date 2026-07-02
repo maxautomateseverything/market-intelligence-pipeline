@@ -1,46 +1,47 @@
 # EDA Checklist Before Modelling
 
 1. Create EDA notebook
-- [ ] Create notebooks/01_eda.ipynb
-- [ ] Load price_features from DuckDB
-- [ ] Sort by ticker, date
-- [ ] Confirm row count and column count
-- [ ] Confirm date range
-- [ ] Confirm tickers included
+- [x] Create notebooks/01_eda.ipynb
+- [x] Load price_features from DuckDB
+- [x] Sort by ticker, date
+- [x] Confirm row count and column count
+- [x] Confirm date range
+- [x] Confirm tickers included
 
 2. Data quality checks
-- [ ] Check missing values by column
-- [ ] Check missing values by ticker
-- [ ] Check duplicate ticker + date rows
-- [ ] Check infinite values
-- [ ] Check zero/negative prices
-- [ ] Check date gaps per ticker
-- [ ] Check whether all tickers have enough history
-- [ ] Check target columns have expected nulls at the final row per ticker
+- [x] Check missing values by column
+- [x] Check missing values by ticker
+- [x] Check duplicate ticker + date rows
+- [x] Check infinite values
+- [x] Check zero/negative prices
+- [x] Check date gaps per ticker
+- [x] Check whether all tickers have enough history
+- [x] Check target columns have expected nulls at the final row per ticker
 
 3. Price behaviour
-- [ ] Plot adjusted close over time per ticker
-- [ ] Compare normalized prices starting at 100
-- [ ] Identify major price jumps or drops
-- [ ] Check whether any ticker behaves unusually
-- [ ] Write 2–3 observations
+- [x] Plot adjusted close over time per ticker
+- [x] Compare normalized prices starting at 100
+- [x] Identify major price jumps or drops
+- [x] Check whether any ticker behaves unusually
+- [x] Write 2–3 observations
 
 4. Return analysis
-- [ ] Plot daily returns over time
-- [ ] Plot return distributions
-- [ ] Compare average daily returns by ticker
-- [ ] Compare return volatility by ticker
-- [ ] Identify extreme return days
-- [ ] Check skewness/kurtosis if you want extra depth
+- [x] Plot daily returns over time
+- [x] Plot return distributions
+- [x] Compare average daily returns by ticker
+- [x] Compare return volatility by ticker
+- [x] Identify extreme return days
+- [x] Check skewness/kurtosis if you want extra depth
 - [ ] Write 2–3 observations
 
 5. Risk analysis
-[] Plot rolling volatility by ticker
-[] Calculate max drawdown by ticker
-[] Plot drawdown over time
-[] Compare risk across assets
-[] Identify periods of high volatility
-[] Write 2–3 observations
+- [ ] Plot rolling volatility by ticker
+- [ ] Identify periods of high volatility
+- [ ] Calculate max drawdown by ticker
+- [ ] Plot drawdown over time
+- [ ] Compare risk across assets
+- [ ] Write 2–3 observations
+
 6. Correlation analysis
 [] Create daily return correlation matrix
 [] Compare asset relationships
