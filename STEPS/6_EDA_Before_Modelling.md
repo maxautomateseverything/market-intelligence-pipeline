@@ -1,95 +1,218 @@
 # EDA Checklist Before Modelling
 
 1. Create EDA notebook
-- [x] Create notebooks/01_eda.ipynb
-- [x] Load price_features from DuckDB
-- [x] Sort by ticker, date
-- [x] Confirm row count and column count
-- [x] Confirm date range
-- [x] Confirm tickers included
-
+* \[x] Create notebooks/01\_eda.ipynb
+* \[x] Load price\_features from DuckDB
+* \[x] Sort by ticker, date
+* \[x] Confirm row count and column count
+* \[x] Confirm date range
+* \[x] Confirm tickers included
 2. Data quality checks
-- [x] Check missing values by column
-- [x] Check missing values by ticker
-- [x] Check duplicate ticker + date rows
-- [x] Check infinite values
-- [x] Check zero/negative prices
-- [x] Check date gaps per ticker
-- [x] Check whether all tickers have enough history
-- [x] Check target columns have expected nulls at the final row per ticker
-
+* \[x] Check missing values by column
+* \[x] Check missing values by ticker
+* \[x] Check duplicate ticker + date rows
+* \[x] Check infinite values
+* \[x] Check zero/negative prices
+* \[x] Check date gaps per ticker
+* \[x] Check whether all tickers have enough history
+* \[x] Check target columns have expected nulls at the final row per ticker
 3. Price behaviour
-- [x] Plot adjusted close over time per ticker
-- [x] Compare normalized prices starting at 100
-- [x] Identify major price jumps or drops
-- [x] Check whether any ticker behaves unusually
-- [x] Write 2–3 observations
-
+* \[x] Plot adjusted close over time per ticker
+* \[x] Compare normalized prices starting at 100
+* \[x] Identify major price jumps or drops
+* \[x] Check whether any ticker behaves unusually
+* \[x] Write 2–3 observations
 4. Return analysis
-- [x] Plot daily returns over time
-- [x] Plot return distributions
-- [x] Compare average daily returns by ticker
-- [x] Compare return volatility by ticker
-- [x] Identify extreme return days
-- [x] Check skewness/kurtosis if you want extra depth
-- [ ] Write 2–3 observations
-
+* \[x] Plot daily returns over time
+* \[x] Plot return distributions
+* \[x] Compare average daily returns by ticker
+* \[x] Compare return volatility by ticker
+* \[x] Identify extreme return days
+* \[x] Check skewness/kurtosis if you want extra depth
+* \[ ] Write 2–3 observations
 5. Risk analysis
-- [ ] Plot rolling volatility by ticker
-- [ ] Identify periods of high volatility
-- [ ] Calculate max drawdown by ticker
-- [ ] Plot drawdown over time
-- [ ] Compare risk across assets
-- [ ] Write 2–3 observations
+* \[ ] Plot rolling volatility by ticker
+* \[ ] Identify periods of high volatility
+* \[ ] Calculate max drawdown by ticker
+* \[ ] Plot drawdown over time
+* \[ ] Compare risk across assets
+* \[ ] Write 2–3 observations
 
-6. Correlation analysis
-[] Create daily return correlation matrix
-[] Compare asset relationships
-[] Check whether correlations change during volatile periods
-[] Identify diversification patterns
-[] Write 1–2 observations
-7. Feature analysis
-[] Inspect moving averages
-[] Plot adj_close vs moving averages
-[] Inspect price_vs_ma20
-[] Inspect relative_volume
-[] Inspect lagged returns
-[] Inspect rolling returns
-[] Check whether feature values look sensible
-[] Check feature distributions
-8. Target analysis
-[] Inspect target_next_day_return
-[] Inspect target_direction
-[] Check class balance for direction target
-[] Calculate percentage of up days vs down days
-[] Compare target behaviour by ticker
-[] Check whether targets are too noisy
-[] Write modelling implications
-9. Feature-target relationships
-[] Correlate features with target_next_day_return
-[] Compare features against target_direction
-[] Plot feature distributions for up days vs down days
-[] Check whether lagged returns have any predictive signal
-[] Check whether volatility affects next-day returns
-[] Check whether price vs moving average relates to next-day direction
-10. Modelling readiness
-[] Choose your modelling feature set
-[] Choose your target variable
-[] Decide whether to model all tickers together or separately
-[] Decide train/test split date
-[] Remove leakage columns
-[] Confirm no future-looking features are used
-[] Confirm target is only used as target, not input
-[] Confirm features are available before prediction date
-11. Key EDA outputs to save
-[] Summary statistics table
-[] Missing-values report
-[] Correlation matrix
-[] Risk/return table
-[] Class balance table
-[] Feature-target correlation table
-[] 5–10 written insights
-[] Modelling decisions section
+
+
+## 6. Correlation analysis
+* \[ ] Create daily return correlation matrix
+* \[ ] Compare asset relationships
+* \[ ] Check whether correlations change during volatile periods
+* \[ ] Identify diversification patterns
+* \[ ] Write 1–2 observations
+
+### Notes:
+
+Correlation matrix compares daily returns over every asset against every other asset. If Asset A goes up what happens to Asset B.
+
+create correlation matrix using pandas:
+```
+corr_matrix = df.corr(numeric_only = True)
+print(corr_matrix)
+```
+plot as heatmap:
+```
+plt.imshow(corr_matrix)
+plt.colorbar()
+plt.xticks(range(len(corr_matrix.columns)), corr_matrix.columns, rotation = 45)
+plt.yticks(range(corr_matrix.columns)), corr_matrix.columns)
+plt.title("Correlation Matrix")
+plt.show()
+```
+Other forms of correlation calculations:
+```
+df.corr(method="pearson") 
+```
+Used to measure linear relationship between two numeric variables. As one increases does the other increase in a straight line.
+```
+df.corr(method="spearman") 
+```
+Does one variable generally increase or decrease with another, even if not linear. Focuses on order rather than exact distance between values.
+```
+df.corr(method="kendall") 
+```
+Want a rank-based correlation like Spearman, but often more conservative and better for smaller datasets.
+
+Practical rules:
+- standard stock correlation matrix: pearson correaltion on returns.
+- portfolio risk / covariance: pearson correlation on returns.
+- outlier-resistant comparison: spearman on returns.
+- ranking/co-movement analysis: spearman or kendall.
+- smaller dataset: kendall.
+
+Log returns vs simple returns:
+- Log returns are additive but simple returns are multiplicative. 
+- Additive nature of log returns makes it better for statistical analysis.
+- Over single day times frames, the return values are almost identical so it doesn't really matter.
+- Generally, it is better to use log returns if you are consistent unless interpreting actual investor gain/loss where simple returns are preferred.
+
+We never correlate stock price (always use returns) because prices generally always rise.
+
+Convert dataframe where we have one column of returns per ticer, use pivot:
+
+```
+pivot_df = df.pivot(
+    index = "date",
+    columns = "ticker",
+    values = "close"
+    ).sort_index()
+```
+
+In our data and often in reality, the tickers don't all have the same number of values for various reasons:
+- IPO later.
+- Missing price records.
+- Assets trade on different calendars.
+- Some data sources have gaps.
+- Holidays differ across exchanges.
+
+After pivoting this will lead non NaNs. By default pandas creates correlations using pairwise observations meaning that the matrix will look compete but each correlation value may be based no a different number of data points. You can check how many days each pair uses:
+
+```
+overlap_counts = log_returns.notna()astype(int).T @ log_returns.notna().astype(int)
+```
+
+This creates a matrix of pairwise overlap counts between the columns of log_returns dataframe. It creates Boolean True or False dataframe of missing and non-missing values, then converts True or False to binary 1 and 0 then does matrix multiplication identifying how many dates have non-Nan values for each index or date.
+
+In response to missing data we have the following options:
+- Use only dates shared by all assets:
+
+```
+shared_df = df.dropna(axis=0, how="any")
+corr = returns_common.corr(method="pearson")
+```
+
+All have same number of data points, better for portfolio optimisation and easier to interpret. But may lost a lot of data if one ticker is very new.
+
+- Use minimum data requirements, ensuring correlation only calculated if two tickers have at least x number of overlapping observations:
+
+```
+corr = df.corr(method = "pearson", min_periods = x)
+```
+
+Usually a good approach for a large stock universe and dataset.
+
+- Filter assets before calculating correlation, removing assts entirely if they have too much missing data:
+
+```
+coverage = df.notna().mean()
+keep = coverage[coverage >= 0.90].index
+filtered_returns = df[keep]
+corr = fitlered_returns.corr(method = "pearson", min_periods = x)
+```
+
+- Use a fixed date window, for example from 20XX onwards:
+
+```
+returns_window = df.loc["20XX-01-01":]
+corr = returns_window.corr(method="pearson")
+```
+
+Interpret the matrix to identify which assets have the strongest positive relationship. Do any move identically (strong positive) or exactly opposite (strong negative)? Which assets have weak relationships (low correlation)? Which assets are almost independent (low correlation provides diversification)? Which assets are surprising (those that expected to move together and don't or those that do have a relationship)?
+
+Relationships between assets are not fixed. For example, during normal markets stocks and bonds may have weak correlation, but during crises many assets begin falling together. Correlation often falls during market crashes. Volatile periods are where markets move much more than usual, e.g., COVID crash, look at volatility line graph. Do stocks become more correlated when markets are stressed? Are there still assets that behave differently or diversify?
+
+It is best to define one share high-volatility period using either:
+- SPY volatility.
+- market index volatility.
+- portfolio volatility.
+- average volatility across all tickers.
+
+	rolling_vol = returns["SPY"].rolling(21).std() * np.sqrt(252)
+	high_vol_dates = rolling_vol[rolling_vol > rolling_vol.quantile(0.80)].index
+
+
+Diversification involves identifying assets that do not move together. Aim to identify diversifying assets by finding low or negative correlation stocks.
+
+
+6. Feature analysis
+\[] Inspect moving averages
+\[] Plot adj\_close vs moving averages
+\[] Inspect price\_vs\_ma20
+\[] Inspect relative\_volume
+\[] Inspect lagged returns
+\[] Inspect rolling returns
+\[] Check whether feature values look sensible
+\[] Check feature distributions
+7. Target analysis
+\[] Inspect target\_next\_day\_return
+\[] Inspect target\_direction
+\[] Check class balance for direction target
+\[] Calculate percentage of up days vs down days
+\[] Compare target behaviour by ticker
+\[] Check whether targets are too noisy
+\[] Write modelling implications
+8. Feature-target relationships
+\[] Correlate features with target\_next\_day\_return
+\[] Compare features against target\_direction
+\[] Plot feature distributions for up days vs down days
+\[] Check whether lagged returns have any predictive signal
+\[] Check whether volatility affects next-day returns
+\[] Check whether price vs moving average relates to next-day direction
+9. Modelling readiness
+\[] Choose your modelling feature set
+\[] Choose your target variable
+\[] Decide whether to model all tickers together or separately
+\[] Decide train/test split date
+\[] Remove leakage columns
+\[] Confirm no future-looking features are used
+\[] Confirm target is only used as target, not input
+\[] Confirm features are available before prediction date
+10. Key EDA outputs to save
+\[] Summary statistics table
+\[] Missing-values report
+\[] Correlation matrix
+\[] Risk/return table
+\[] Class balance table
+\[] Feature-target correlation table
+\[] 5–10 written insights
+\[] Modelling decisions section
+
 
 
 ## Final EDA deliverable
@@ -97,6 +220,7 @@
 End the notebook with:
 
 EDA Summary:
+
 1. What data I have
 2. What quality issues I found
 3. What the main return/risk patterns are
@@ -104,3 +228,4 @@ EDA Summary:
 5. Which target I will model
 6. How I will split train/test data
 7. What limitations I noticed
+
