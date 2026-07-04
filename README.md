@@ -2,6 +2,10 @@
 
 Title: Automated Market Intelligence Pipeline with Forecasting and Financial Dashboard.
 
+NOTE: this project is very messy but works. This is more a project for myself to learn the full pipeline of ingesting, processing, and modelling data - specifically financial data.
+
+To have insight into what a clean notebook and work would look like, look at `08 - Target Analysis.ipynb` 
+
 Core Stack: python (main language), pandas (data cleaning), yfinance (data source), 
 		duckdb (local database), sql (analysis), scikit-learn (modeling), 
 		streamlit (dashboard), prefect (orchastration).

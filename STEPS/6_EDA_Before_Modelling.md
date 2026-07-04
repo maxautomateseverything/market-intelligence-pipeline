@@ -170,48 +170,365 @@ It is best to define one share high-volatility period using either:
 Diversification involves identifying assets that do not move together. Aim to identify diversifying assets by finding low or negative correlation stocks.
 
 
-6. Feature analysis
-\[] Inspect moving averages
-\[] Plot adj\_close vs moving averages
-\[] Inspect price\_vs\_ma20
-\[] Inspect relative\_volume
-\[] Inspect lagged returns
-\[] Inspect rolling returns
-\[] Check whether feature values look sensible
-\[] Check feature distributions
-7. Target analysis
-\[] Inspect target\_next\_day\_return
-\[] Inspect target\_direction
-\[] Check class balance for direction target
-\[] Calculate percentage of up days vs down days
-\[] Compare target behaviour by ticker
-\[] Check whether targets are too noisy
-\[] Write modelling implications
-8. Feature-target relationships
-\[] Correlate features with target\_next\_day\_return
-\[] Compare features against target\_direction
-\[] Plot feature distributions for up days vs down days
-\[] Check whether lagged returns have any predictive signal
-\[] Check whether volatility affects next-day returns
-\[] Check whether price vs moving average relates to next-day direction
-9. Modelling readiness
-\[] Choose your modelling feature set
-\[] Choose your target variable
-\[] Decide whether to model all tickers together or separately
-\[] Decide train/test split date
-\[] Remove leakage columns
-\[] Confirm no future-looking features are used
-\[] Confirm target is only used as target, not input
-\[] Confirm features are available before prediction date
-10. Key EDA outputs to save
-\[] Summary statistics table
-\[] Missing-values report
-\[] Correlation matrix
-\[] Risk/return table
-\[] Class balance table
-\[] Feature-target correlation table
-\[] 5–10 written insights
-\[] Modelling decisions section
+### 7. Feature analysis
+* \[ ] Inspect moving averages
+* \[ ] Plot adj\_close vs moving averages
+* \[ ] Inspect price\_vs\_ma20
+* \[ ] Inspect relative\_volume
+* \[ ] Inspect lagged returns
+* \[ ] Inspect rolling returns
+* \[ ] Check whether feature values look sensible
+* \[ ] Check feature distributions
+
+Moving averages:
+- Use line plot.
+- Compares short and long term trends over time.
+
+- ma lines trending upward: long term price direction is positive.
+- ma lines trending downward: long term price direction is negative.
+- short ma reacts faster: captures recent price changes.
+- long ma is smoother: shows broader trend.
+- frequent crossovers: market is volatile or range bound.
+
+Price vs MA:
+- Overlay line plot / multi-line time series plot.
+- Plot adj_close, ma, and p_vs_ma, together to see trend direction and crossovers.
+
+```
+plt.plot(df.index, df["Adj Close"], label="Adj Close")
+plt.plot(df.index, df["MA_20"], label="20-day MA")
+plt.plot(df.index, df["MA_50"], label="50-day MA")
+plt.plot(df.index, df["MA_200"], label="200-day MA")
+```
+
+- adj close above moving average: price is an upward trend.
+- adj close below moving average: price is in a downward trend.
+- short ma crosses above long ma: possible bullish signal.
+- short ma crosses below long ma: possible bearish signal.
+- moving averages close together: weak trend or sideways market.
+- moving averages spread apart: stronger trend direction.
+
+
+Relative volume:
+- Bar plot or line plot.
+- Bar plot if volume changes sharply day to day. Line plot is useful for smoother trend inspection.
+- Compares current volume to average volume.
+
+```
+plt.bar(df.index, df["relative_volume"])
+```
+
+- around 1: normal trading volume.
+- greater than 1: high than usual trading activity.
+- much greater than 1, e.g., 2 or 3: possible news, earnigns, panic buying/selling, or strong market interest.
+- less than 1: lower than usual activity.
+
+
+Lagged returns:
+- Scatter plot, line plot, or autocorrelation plot.
+- Scatter plot shows whether pat returns relate to current return. Autcorrelation helps detect time dependence (whether time series features are correlated with its own past values).
+
+```
+plt.scatter(df["lagged_return_1"], df["returns"], alpha=0.5)
+```
+- clear upward slope: positive autocorrelation: past positive returns may be followed by positive returns.
+- clear downward slope: mean reversion: past positive returns may be followed by negative returns.
+- random cloud around zero: weak relationship between past and current returns.
+- extreme points far away: outliers or unusually volatile days.
+
+```
+from statsmodelf.graphics.tsaplots import plot_acf
+import matplotlib.pyplot as plt
+
+plot_acf(
+	df["returns"].dropna(),
+	lags=40
+	)
+
+plt.title("Autocorrelation Plot of Returns")
+plt.xlabel("Lag")
+plt.ylabel("Autocorrelation")
+plt.show()
+
+# X-axis is the lag number.
+# Y-axis is autocorrelation value.
+# Bars outside the blue confidence band may indicate meaningful autocorrelation. If most bars are inside the band the feature has little time dependence.
+
+```
+- bars inside confidence band: no strong  autocorrelation.
+- bars outside confidence band: significant autocorrelation at that lag.
+- strong lag 1 autocorrelation: yesterday's value is related to today's value.
+- slowly declining bars: trend or persistence in the series.
+- alternating positive/negative bars: possible reversal pattern.
+
+
+
+Rolling returns:
+- Line plot.
+- Shows how returns behave over rolling windows.
+
+- rolling return above zero: positive return over that window.
+- rolling return below zero: negative return over that window.
+- large positive spikes: strong recent performance.
+- large negative drops: weak recent performance or drawdown.
+- frequent swings: high volatility.
+- smooth trend upward: sustained positive momentum.
+
+Feature distributions:
+- Historgram, KDE plt, box plot.
+- Shows skewness, outliers, spread, and whether feature is normally distributed.
+
+```
+plt.hist(df["returns"].dropna(), bins=50)
+# Shows how often values fall into ranges, x = returns, y = frequency.
+```
+- centred around zero: returns are usually small.
+- wide spread: high volatility.
+- narrow spread: low volatility.
+- long left tail: large negative returns occur occasionally.
+- long right tail: large positive returns occur occasionally.
+- extreme bars far from centre: outliers.
+
+```
+import seaborn as sns
+sns.kdeplot(df["returns"], fill=True)
+plt.plot()
+# Shows a smooth estimate of the distribution shape, x = returns, y = density.
+```
+- tail narrow peak: most values are concentrated near the mean.
+- wide flat shape: values are more spread out.
+- skewed left: more extreme negative values.
+- skewed right: more extreme positive values.
+- multiple peaks: possible different market regimes.
+
+```
+plt.boxplot(df["returns"].dropna(), vert=False)
+# Best for spotting outliers, median, and spread.
+```
+- middle line: median value.
+- box: middle 50% of values.
+- whiskers: normal range of values.
+- points outside of whiskers: outliers.
+
+
+- overall interepretation:
+- adj close vs ma: is price trending up or down.
+- ma: is momentum changing.
+- relative columne: trading acvitity unusually high.
+- lagged returns: returns predict current returns.
+- autocorrelation: time dependence in the feature.
+- rolling returns: recent performance positive or negative.
+- histogram/kde: what does the feature distribution look like.
+- box plot: outliers.
+
+
+
+### 8. Target analysis
+* \[ ] Inspect target\_next\_day\_return
+* \[ ] Inspect target\_direction
+* \[ ] Check class balance for direction target
+* \[ ] Calculate percentage of up days vs down days
+* \[ ] Compare target behaviour by ticker
+* \[ ] Check whether targets are too noisy
+* \[ ] Write modelling implications
+
+#### Target_next_day_return:
+
+Start by understanding the raw return target:
+- are next day returns centred around zero?
+- are there extreme outliers?
+- are returns roughly symmetric?
+- do some tickers have wider returns distributions than others.
+
+Summaries to produce:
+- mean: shows average next day return.
+- median: better central tendency if outliers exist.
+- standard deviation: measures daily volatility.
+- min/max: identifies extreme events
+- 1st/99th percentile: shows tail risk without being dominated by outliers.
+- skewness: checks whether upside/downside tails domainate.
+- kutosis: checks whether returns are unusually fat tailed.
+
+```
+impport pandas as pd
+
+numeric_df = df.select_dtypes(include="number")
+
+summary = numeric_df.agg([
+    "mean",
+    "median",
+    "std",
+    "min",
+    "max",
+    "skew",
+    "kurt"
+])
+
+summary.loc["p1"] = numeric_df.quantile(0.01)
+summary.loc["p99"] = numeric_df.quantile(0.99)
+
+print(summary)
+```
+
+should inspect:
+- overall across all 7 assets.
+- by ticker as each ticker behaves differently.
+- by year: because each market regime changes.
+
+```
+import pandas as pd
+
+# Convert date column to datetime
+df["date"] = pd.to_datetime(df["date"])
+
+# Create a year column
+df["year"] = df["date"].dt.year
+```
+
+#### Target_direction:
+
+Check:
+- Are there only two classes.
+- any missing target values.
+- are there any zero return days.
+- are sero return days classified as down or up or removed.
+
+```
+col = "col_a"
+other_col = "col_b"
+
+# Number of distinct values
+n_distinct = df[col].nunique()
+
+# Number of missing values
+n_missing = df[col].isna().sum()
+
+# Number of zero values
+n_zeros = (df[col] == 0).sum()
+
+# Values of other_col when col_a is 0
+other_values_when_col_is_zero = df.loc[df[col] == 0, other_col]
+
+print("Distinct values:", n_distinct)
+print("Missing values:", n_missing)
+print("Zero values:", n_zeros)
+print("Values of other column when col is zero:")
+print(other_values_when_col_is_zero)
+```
+
+#### Check class for balance direction:
+
+calculate the number of:
+- up days.
+- down days.
+- flat or zero return days if applicable.
+
+Do overall then do by ticker. Display in percents and give total observation column as well.
+
+```
+col = "your_column"
+
+percent_counts = df[col].value_counts(normalize=True) * 100
+
+print(percent_counts)
+
+# Nan values are excluded from counts by default.
+```
+
+```
+percent_counts = df[col].value_counts(normalize=True, dropna=False) * 100
+# To include Nan
+```
+
+#### Calculate percentage of up days vs down days:
+
+The simple headline version of the class balance check.
+
+Aims to give a baseline prior to creating the model. Assuming that there are up days 58% in the data, then a model that always predicts up 100% of the time will be correct 58% of the time. Therefore, a model that we create needs to have an accuracy better than 58%.
+
+#### Compare target behaviour by ticker:
+
+Aim to compare all assets on:
+- average next day return: does one asset have a stronger drift
+- volatility: are some assets more noisy.
+- up / down balance: are some assets structurally more often up.
+- outliers: are big moves concentrated in specific tickers.
+- regime sensitivity: did some assets behave differently in 2020, 2022, etc.
+- missing data: do all tickers have similar coverage from 2018 onwards.
+
+This will tell you whether the model is learning a general cross asset pattern or whether one ticker is dominating the target behaviour.
+
+Should also check whether the 7 assets have differen peresonlaitites. for example:
+- equity indices may have lower voaltilty.
+- individual stocks may have larger jumps.
+- crypto assets may have much fatter tails.
+- commodities may have differtent trend behaviour.
+- fx may have smaller daily returns.
+
+If assets are very different you may need ticker specific features or separate models.
+
+#### Check whether targets are too noisy:
+
+daily next day returns are usually very noisy. you want to know whether the target contains enough signal to model.
+
+Check the distribution around zero. 
+- If most next day returns are close ot zero then the target may be dominated by random noise. 
+- Aim to look at the share of days where the return falls into bands.
+- For example, percentrage of returns less than -2%, percentrage from -2% to -1%, etc. 
+- If most observations are between -0.5% and +0.5% then the direction may be very hard to predict reliably.
+
+Signal to noise ratio:
+- compare average next day returns ot the volatility of next day returns.
+- if the mean next day returns is tiny compared with standard deviation, the regression target is noisy.
+- it doesn't mean modelling is impossible, but means that simple accuracy or MSE may not be very informative.
+
+Stability over time:
+- Split the data by year and calculate mean return, volatility, %up and %down.
+- aim to check whether the target behaviour is stable.
+
+Autocorrelation:
+- check whether next day returns or directions have persistence.
+- are up days more likely after up days? are down days more likely after down days? do returns mean-revert? is there any relationship between todays return and tomorrows returns.
+
+#### Modelling implications:
+
+Translating target anlaysis into modelling decisions.
+
+Example: 
+The target analysis shows that next-day returns are highly noisy, with most observations clustered close to zero and occasional large outliers. The direction target is broadly balanced, with up and down days close to a 50/50 split overall, although the balance varies by ticker. This means that accuracy alone is not a sufficient evaluation metric, because a naive majority-class model may already achieve a competitive baseline.
+
+Target behaviour differs across tickers, particularly in volatility, tail risk, and up-day frequency. Therefore, the model should either include ticker identity as a feature or be evaluated separately by ticker to ensure that performance is not being driven by only one or two assets. Because the data covers multiple market regimes from 2018 onward, validation should be time-based rather than randomly shuffled.
+
+The next-day return target is likely more difficult to model than a broader-horizon return because daily price movements contain substantial noise. For regression, robust loss functions and outlier handling may be needed. For classification, it may be useful to test a neutral zone by ignoring very small next-day returns, since tiny positive and negative moves may not be economically meaningful after transaction costs.
+
+Overall, the modelling task should be treated as a low-signal financial prediction problem. Model performance should be compared against simple baselines, evaluated out of sample, checked by ticker and by time period, and judged using both statistical metrics and trading-relevant metrics such as precision, hit rate, drawdown, turnover, and performance after costs.
+
+
+### 9. Feature-target relationships
+* \[ ] Correlate features with target\_next\_day\_return
+* \[ ] Compare features against target\_direction
+* \[ ] Plot feature distributions for up days vs down days
+* \[ ] Check whether lagged returns have any predictive signal
+* \[ ] Check whether volatility affects next-day returns
+* \[ ] Check whether price vs moving average relates to next-day direction
+### 10. Modelling readiness
+* \[ ] Choose your modelling feature set
+* \[ ] Choose your target variable
+* \[ ] Decide whether to model all tickers together or separately
+* \[ ] Decide train/test split date
+* \[ ] Remove leakage columns
+* \[ ] Confirm no future-looking features are used
+* \[ ] Confirm target is only used as target, not input
+* \[ ] Confirm features are available before prediction date
+### 11. Key EDA outputs to save
+* \[ ] Summary statistics table
+* \[ ] Missing-values report
+* \[ ] Correlation matrix
+* \[ ] Risk/return table
+* \[ ] Class balance table
+* \[ ] Feature-target correlation table
+* \[ ] 5–10 written insights
+* \[ ] Modelling decisions section
 
 
 

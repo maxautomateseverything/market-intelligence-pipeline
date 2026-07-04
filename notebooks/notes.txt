@@ -68,7 +68,7 @@ In response to missing data we have the following options:
 - Use only dates shared by all assets:
 	
 	shared_df = df.dropna(axis=0, how="any")
-	corr = returns_common.corr(method="pearson")
+	corr = shared_df.corr(method="pearson")
 
 All have same number of data points, better for portfolio optimisation and easier to interpret. But may lost a lot of data if one ticker is very new.
 
@@ -103,6 +103,15 @@ Interpret the matrix to identify which assets have the strongest positive relati
 Relationships between assets are not fixed. For example, during normal markets stocks and bonds may have weak correlation, but during crises many assets begin falling together. Correlation often falls during market crashes. Volatile periods are where markets move much more than usual, e.g., COVID crash, look at volatility line graph. Do stocks become more correlated when markets are stressed? Are there still assets that behave differently or diversify?
 ------------------------------------------------------------------------
 
+It is best to define one share high-volatility period using either:
+- SPY volatility.
+- market index volatility.
+- portfolio volatility.
+- average volatility across all tickers.
+
+	rolling_vol = returns["SPY"].rolling(21).std() * np.sqrt(252)
+	high_vol_dates = rolling_vol[rolling_vol > rolling_vol.quantile(0.80)].index
+
 ------------------------------------------------------------------------
 Diversification involves identifying assets that do not move together. Aim to identify diversifying assets by finding low or negative correlation stocks.
 ------------------------------------------------------------------------
@@ -119,6 +128,148 @@ Diversification involves identifying assets that do not move together. Aim to id
 [] Inspect rolling returns
 [] Check whether feature values look sensible
 [] Check feature distributions
+
+Moving averages:
+- Use line plot.
+- Compares short and long term trends over time.
+
+-- ma lines trending upward: long term price direction is positive.
+-- ma lines trending downward: long term price direction is negative.
+-- short ma reacts faster: captures recent price changes.
+-- long ma is smoother: shows broader trend.
+-- frequent crossovers: market is volatile or range bound.
+
+Price vs MA:
+- Overlay line plot / multi-line time series plot.
+- Plot adj_close, ma, and p_vs_ma, together to see trend direction and crossovers.
+
+```
+plt.plot(df.index, df["Adj Close"], label="Adj Close")
+plt.plot(df.index, df["MA_20"], label="20-day MA")
+plt.plot(df.index, df["MA_50"], label="50-day MA")
+plt.plot(df.index, df["MA_200"], label="200-day MA")
+```
+
+-- adj close above moving average: price is an upward trend.
+-- adj close below moving average: price is in a downward trend.
+-- short ma crosses above long ma: possible bullish signal.
+-- short ma crosses below long ma: possible bearish signal.
+-- moving averages close together: weak trend or sideways market.
+-- moving averages spread apart: stronger trend direction.
+
+
+Relative volume:
+- Bar plot or line plot.
+- Bar plot if volume changes sharply day to day. Line plot is useful for smoother trend inspection.
+- Compares current volume to average volume.
+
+```
+plt.bar(df.index, df["relative_volume"])
+```
+
+-- around 1: normal trading volume.
+-- greater than 1: high than usual trading activity.
+-- much greater than 1, e.g., 2 or 3: possible news, earnigns, panic buying/selling, or strong market interest.
+-- less than 1: lower than usual activity.
+
+
+Lagged returns:
+- Scatter plot, line plot, or autocorrelation plot.
+- Scatter plot shows whether pat returns relate to current return. Autcorrelation helps detect time dependence (whether time series features are correlated with its own past values).
+
+```
+plt.scatter(df["lagged_return_1"], df["returns"], alpha=0.5)
+```
+-- clear upward slope: positive autocorrelation: past positive returns may be followed by positive returns.
+-- clear downward slope: mean reversion: past positive returns may be followed by negative returns.
+-- random cloud around zero: weak relationship between past and current returns.
+-- extreme points far away: outliers or unusually volatile days.
+
+```
+from statsmodel.graphics.tsaplots import plot_act
+import matplotlib.pyplot as plt
+
+plot_acf(
+	df["returns"].dropna(),
+	lags=40
+	)
+
+plt.title("Autocorrelation Plot of Returns")
+plt.xlabel("Lag")
+plt.ylabel("Autocorrelation")
+plt.show()
+
+# X-axis is the lag number.
+# Y-axis is autocorrelation value.
+# Bars outside the blue confidence band may indicate meaningful autocorrelation. If most bars are inside the band the feature has little time dependence.
+
+```
+-- bars inside confidence band: no strong autocorrelation.
+-- bars outside confidence band: significant autocorrelation at that lag.
+-- strong lag 1 autocorrelation: yesterday's value is related to today's value.
+-- slowly declining bars: trend or persistence in the series.
+-- alternating positive/negative bars: possible reversal pattern.
+
+
+
+Rolling returns:
+- Line plot.
+- Shows how returns behave over rolling windows.
+
+-- rolling return above zero: positive return over that window.
+-- rolling return below zero: negative return over that window.
+-- large positive spikes: strong recent performance.
+-- large negative drops: weak recent performance or drawdown.
+-- frequent swings: high volatility.
+-- smooth trend upward: sustained positive momentum.
+
+Feature distributions:
+- Historgram, KDE plt, box plot.
+- Shows skewness, outliers, spread, and whether feature is normally distributed.
+
+```
+plt.hist(df["returns"].dropna(), bins=50)
+# Shows how often values fall into ranges, x = returns, y = frequency.
+```
+-- centred around zero: returns are usually small.
+-- wide spread: high volatility.
+-- narrow spread: low volatility.
+-- long left tail: large negative returns occur occasionally.
+-- long right tail: large positive returns occur occasionally.
+-- extreme bars far from centre: outliers.
+
+```
+import seaborn as sns
+sns.kdeplot(df["returns"], fill=True)
+plt.plot()
+# Shows a smooth estimate of the distribution shape, x = returns, y = density.
+```
+-- tail narrow peak: most values are concentrated near the mean.
+-- wide flat shape: values are more spread out.
+-- skewed left: more extreme negative values.
+-- skewed right: more extreme positive values.
+-- multiple peaks: possible different market regimes.
+
+```
+plt.boxplot(df["returns"].dropna(), vert=False)
+# Best for spotting outliers, median, and spread.
+```
+-- middle line: median value.
+-- box: middle 50% of values.
+-- whiskers: normal range of values.
+-- points outside of whiskers: outliers.
+
+
+- overall interepretation:
+-- adj close vs ma: is price trending up or down.
+-- ma: is momentum changing.
+-- relative columne: trading acvitity unusually high.
+-- lagged returns: returns predict current returns.
+-- autocorrelation: time dependence in the feature.
+-- rolling returns: recent performance positive or negative.
+-- histogram/kde: what does the feature distribution look like.
+-- box plot: outliers.
+
 
 8. Target analysis
 [] Inspect target_next_day_return
