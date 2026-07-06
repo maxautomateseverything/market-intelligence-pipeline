@@ -1,5 +1,7 @@
 # Data Quality Checks Report
 
+This step aims to validate whether the data holds a suitable level of quality prior to modelling. 
+
 The dataset contained 7 assets covering data from 2018 to present. Data quality checks were performed, inspecting:
 
 - Missingness by column.

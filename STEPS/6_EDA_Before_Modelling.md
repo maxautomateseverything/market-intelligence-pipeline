@@ -208,7 +208,7 @@ The price behaviour analysis shows how each asset evolved over time and whether 
 - do later IPO assets show larger eary stage return swinfs.
 - are extreme returns isolated or clustered.
 
-### What toderive from return distributions:
+### What to derive from return distributions:
 - centred near zero: normal for daily financial returns.
 - wide distributions: high volatility.
 - long left tail: large downside risk.
@@ -217,7 +217,7 @@ The price behaviour analysis shows how each asset evolved over time and whether 
 - skewness: whether extreme moves are more positive or negative.
 - kurtosis: whether asset has usually large outliers.
 
-## Average return vs volatility:
+### Average return vs volatility:
 - return to risk ratio = mean daily return / daily return standard deviation.
 - this is not full sharpe ration unless we adjust for the risk free rate.
 
