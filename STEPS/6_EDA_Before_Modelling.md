@@ -396,120 +396,604 @@ example:
 
 The correlation analysis evaluates how closely the seven assets move together based on daily returns. This helps identify whether the asset universe provides meaningful diversification or whether several tickers share similar market behaviour. Since some assets IPO later, correlations should be interpreted carefully because the available overlapping history differs across assets. Comparing correlations during normal and high-volatility periods also shows whether diversification remains stable during market stress.
 
-## 7. Feature analysis
-* \[ ] Inspect moving averages
-* \[ ] Plot adj\_close vs moving averages
-* \[ ] Inspect price\_vs\_ma20
-* \[ ] Inspect relative\_volume
-* \[ ] Inspect lagged returns
-* \[ ] Inspect rolling returns
-* \[ ] Check whether feature values look sensible
-* \[ ] Check feature distributions
+## 7. Feature Analysis
 
-### Inspect moving averages:
-- check ma features.
-- confirm that rolling windows are correctly calculated and pruce expected early nan values.
+### Analysis checklist
 
-### Plot adj_close vs moving averages:
-- compare price against moving averages over time.
-- identify trend regiumes, crossovers, support resistance behaviour, and whether features track price smoothly.
+* [ ] Check whether feature values are sensible
+* [ ] Inspect moving averages
+* [ ] Plot adjusted close against moving averages
+* [ ] Inspect `price_vs_ma20`
+* [ ] Inspect `relative_volume`
+* [ ] Inspect lagged returns
+* [ ] Inspect rolling returns
+* [ ] Check feature distributions
+* [ ] Check relationships and redundancy between features
+* [ ] Confirm that predictor features do not contain future information
 
-### Inspect prive vs ma20:
-- heck how far price is above or below its 20 day ma.
-- derive short term momentum or mean reversion signals.
+---
 
-### Insepct relative volumne:
-- compare current volume against normal recent volumne.
-- identify unsual trading activity that may reflect news, earnings, IPO effects, or abonormal market interest.
+#### 7.1 Checking sensible feature values
 
-### Inspect lagged returns:
-- check prefious day or previous period return features.
-- conform lag features are shited correctly and do not leak future information.
+##### Purpose
 
-### Inspect rolling returns:
-- check rolling or longer cumulative returns.
-- derive short, medium, and longer term momentum behaviour.
+Check whether the engineered features have been calculated correctly and whether their values are structurally valid.
 
-### Check feature values look sensible:
-- look for impossible extreme or wrongly scaled values.
-- detect calculation errors, data leakages, division by zero or ticker specific abonormalities.
+This section should identify:
 
-### Check feature distributions:
-- plot histograms, boxplots or summary statistics by ticker.
-- understand skewness, outliers, scaling needs and whether transformations are required.
+* Missing values
+* Infinite values
+* Unexpected internal gaps
+* Incorrect rolling-window start positions
+* Incorrect signs
+* Incorrect scales
+* Impossible values
+* Division-by-zero errors
+* Ticker-specific abnormalities
+* Features that accidentally use future information
 
-### Inspecting moving averages:
-- Do moving averages start only after enough observations?
-- Does MA20 react faster than MA50 or MA200?
-- Are moving averages smoother than price?
-- Are there unexpected jumps or flat sections?
-- Do later IPO assets have more missing MA values at the beginning?
+General validity checks should be completed here rather than repeated in every later feature section.
 
-### Inspecting adj_close vs ms plot:
-- Whether the moving average follows the price correctly.
-- Whether short-term averages react faster than long-term averages.
-- Whether crossovers happen at sensible points.
-- Whether later IPO assets have shorter available moving-average history.
+##### Outputs to inspect
 
-### Inspecting price vs ma20:
-- Is the value close to zero when price is near MA20?
-- Is it positive when price is above MA20?
-- Is it negative when price is below MA20?
-- Are there extreme values after IPO or during crashes?
-- Are there infinite values from division by zero?
+* Feature-definition table
+* Independent feature-recalculation table
+* Feature-health matrix
+* Missing-value percentage matrix
+* Missing-feature heatmap
+* Expected-domain violation table
+* Zero-volume summary
+* Feature-lineage and leakage table
 
-### Inspecting relative volume:
-- Are most values around 1?
-- Are values above 2 or 3 linked to unusual trading activity?
-- Are there extreme spikes around earnings, IPO period, or major news?
-- Are there zero-volume days?
-- Are there missing or infinite values?
+##### Questions to answer
 
-### Inspecting lagged returns:
-- Momentum effects.
-- Short-term reversal effects.
-- Autocorrelation patterns.
-- Whether previous returns have predictive information.
+* Do independently recalculated features match the stored feature values?
+* Are differences small enough to be explained by floating-point precision?
+* Do rolling features begin only after the required number of observations?
+* Are missing values concentrated at the beginning of each ticker’s history?
+* Are there missing values after a feature has already become available?
+* Are there positive or negative infinite values?
+* Are adjusted prices positive?
+* Is volume non-negative?
+* Are simple returns normally greater than `-1`?
+* Are moving averages positive when available?
+* Is relative volume non-negative?
+* Is rolling volatility non-negative?
+* Is drawdown normally between `-1` and `0`?
+* Does `price_vs_ma20` have the same sign as `adj_close - MA20`?
+* Does `target_direction` contain only its expected classes?
+* Are target features excluded from the predictor set?
+* Are features calculated separately within each ticker?
+* Does the assumed prediction time make the current closing price and current volume available?
 
-### Inspecting rolling returns:
-- Are early rows NaN until enough history exists?
-- Are rolling returns positive during upward trends?
-- Are rolling returns negative during drawdowns?
-- Are values extreme but plausible?
-- Do later IPO assets have shorter rolling-return histories?
+##### How to analyse the results
 
-### Inspecting sensible features:
-- Missing values.
-- Infinite values.
-- Very large outliers.
-- Wrong signs.
-- Wrong scales.
-- Features using future information.
-- Ticker-specific abnormalities.
-- Early-window NaN values from rolling calculations.
+A feature should normally pass the independent recalculation check with zero mismatched rows or only negligible floating-point differences.
 
-### Observations:
+Initial missing values are expected when a feature requires historical observations. For example:
 
-example:
+* A one-period return normally has one initial missing value.
+* MA20 normally has 19 initial missing values when the current observation is included in the 20-observation window.
+* MA50 normally has 49 initial missing values.
+* A seven-observation return based on `price / price.shift(7) - 1` normally has seven initial missing values.
+* A 30-observation return normally has 30 initial missing values.
+* A next-day target normally has a missing value at the end of each ticker’s history.
 
-Observation 1 — feature validity
+Later IPO assets should have shorter total feature histories, but the number of required initial observations should remain consistent.
 
-Moving-average and rolling-return features behave as expected, with missing values appearing mainly at the beginning of each ticker’s history due to rolling-window requirements. This suggests the features are structurally valid and suitable for modelling after removing rows with insufficient history.
+Internal missing values are more concerning than initial missing values. They may indicate missing source data, an invalid denominator, or an implementation error.
 
-Observation 2 — momentum and trend behaviour
+Any infinite value should be investigated. Common causes include:
 
-The price_vs_ma20 and rolling-return features capture periods where assets trade above or below their recent trend. Extreme positive or negative values highlight momentum surges, sell-offs, or possible overextended price movements.
+* A zero denominator
+* A zero moving average
+* A zero rolling-volume baseline
+* Invalid logarithms
+* Incorrect handling of missing values
 
-Observation 3 — volume behaviour
+The feature-lineage table should show that predictor features use only current and historical information. Target variables may use future information, but they must not be included as predictors.
 
-Relative volume is likely to be right-skewed, with most observations close to normal trading levels and occasional large spikes. These spikes may reflect earnings, news events, IPO-related activity, or abnormal market participation.
+The validity of current-day price and volume features also depends on the prediction timestamp. They are valid for a model predicting the next trading day after the current market close, but may represent leakage for a model making predictions before the current close.
 
-### Conclusion:
+---
 
-example:
+#### 7.2 Inspecting moving averages
 
-The feature analysis checks whether the engineered variables are correctly calculated, interpretable, and suitable for later modelling. Moving averages and price_vs_ma20 describe trend behaviour, relative volume captures unusual trading activity, and lagged or rolling returns capture momentum across different horizons. Since some assets IPO later, valid feature counts differ across tickers, especially for long rolling-window features such as MA200. Overall, this step helps confirm whether the features are sensible, whether missing values are expected, and whether scaling or outlier treatment is needed before modelling.
+##### Purpose
 
+Check whether the moving-average features are correctly calculated and behave as expected.
+
+The available moving-average features are:
+
+* `moving_avg_20_no_calendar`
+* `moving_avg_50_no_calendar`
+
+MA200 cannot be assessed unless a 200-observation moving average is created.
+
+##### Outputs to inspect
+
+* Moving-average availability table
+* Adjusted-close, MA20, and MA50 time-series plots
+* Moving-average responsiveness and smoothness table
+* MA20–MA50 crossover table
+* Unexpected jump and flat-section diagnostics
+
+##### Questions to answer
+
+* Does MA20 begin only after enough observations are available?
+* Does MA50 begin only after enough observations are available?
+* Does MA20 become available before MA50?
+* Does MA20 react faster than MA50?
+* Is MA50 smoother than MA20?
+* Are both moving averages smoother than adjusted close?
+* Do the moving averages follow the general direction of the price?
+* Are there unexpected jumps in either moving average?
+* Are there suspiciously long flat sections?
+* Do later IPO assets have shorter moving-average histories?
+* Do MA20 and MA50 cross at visually sensible points?
+
+##### How to analyse the results
+
+The expected responsiveness order is:
+
+[
+|\Delta MA50| < |\Delta MA20| < |\Delta Price|
+]
+
+MA20 should respond more quickly to recent changes because it uses fewer observations. MA50 should change more slowly and provide a smoother representation of the longer-term trend.
+
+A moving average should not normally jump sharply unless:
+
+* The underlying price changed substantially
+* A large historical observation entered or left the rolling window
+* There was a stock split or adjustment issue
+* The feature was calculated incorrectly
+
+Long flat sections may be valid for a very stable price series, but they should be reviewed when the underlying price is changing.
+
+The moving averages should generally remain close to the price while smoothing daily noise. MA20 should normally be closer to the current price than MA50.
+
+---
+
+#### 7.3 Plotting adjusted close against moving averages
+
+##### Purpose
+
+Compare the adjusted closing price with MA20 and MA50 over time.
+
+Use one panel per ticker so that differences in price scale do not make the plots difficult to interpret.
+
+##### Questions to answer
+
+* Do the moving averages follow the adjusted price correctly?
+* Does MA20 turn before MA50 when the price changes direction?
+* Are moving averages below the price during sustained upward trends?
+* Are moving averages above the price during sustained downward trends?
+* Do crossovers occur after meaningful changes in price direction?
+* Are there periods where price repeatedly moves around a moving average?
+* Do the moving averages appear to provide descriptive support or resistance?
+* Do later IPO assets have shorter plotted histories?
+
+##### How to analyse the results
+
+During a sustained upward trend, the expected ordering is often:
+
+[
+Price > MA20 > MA50
+]
+
+During a sustained downward trend, the expected ordering is often:
+
+[
+Price < MA20 < MA50
+]
+
+When MA20 crosses above MA50, it may indicate improving short-term momentum relative to the medium-term trend. When MA20 crosses below MA50, it may indicate weakening momentum.
+
+Crossovers should not be treated as automatically predictive. They are descriptive indicators whose usefulness must later be tested using out-of-sample modelling.
+
+Support and resistance behaviour should also be described carefully. A moving average may appear to act as a reference level when price repeatedly rebounds from or falls back from it, but a visual pattern alone does not prove a stable trading relationship.
+
+---
+
+#### 7.4 Inspecting `price_vs_ma20`
+
+##### Purpose
+
+Measure how far the adjusted price is above or below its 20-observation moving average.
+
+This feature can capture:
+
+* Short-term momentum
+* Short-term trend strength
+* Temporary overextension
+* Possible mean-reversion conditions
+
+##### Outputs to inspect
+
+* `price_vs_ma20` time-series plots
+* Zero-reference line
+* Sign-validation results
+* Extreme-value dates
+* Distribution and percentile summaries
+
+##### Questions to answer
+
+* Is the value close to zero when price is close to MA20?
+* Is it positive when price is above MA20?
+* Is it negative when price is below MA20?
+* Does it increase during strong upward price movements?
+* Does it decrease during sell-offs?
+* Does it return toward zero after extreme movements?
+* Are there unusually large values immediately after an IPO?
+* Are there extreme values during market crashes or rallies?
+* Are there infinite values caused by division by zero?
+* Is the scale stored as a decimal or as percentage points?
+
+##### How to analyse the results
+
+When the feature is defined as:
+
+[
+price_vs_ma20_t =
+\frac{Price_t}{MA20_t} - 1
+]
+
+the interpretation is:
+
+* `0.00`: price is equal to MA20
+* `0.05`: price is 5% above MA20
+* `-0.05`: price is 5% below MA20
+
+Large positive values indicate that price is substantially above its recent trend. This may reflect strong momentum, but it may also indicate an overextended movement.
+
+Large negative values indicate that price is substantially below its recent trend. This may reflect downward momentum, panic selling, or a possible mean-reversion opportunity.
+
+Extreme observations should be checked against the underlying price and moving-average plot before being labelled as errors. Large values during crashes, rallies, or early post-IPO periods may be unusual but valid.
+
+---
+
+#### 7.5 Inspecting relative volume
+
+##### Purpose
+
+Compare current trading volume with its recent normal level.
+
+Relative volume may help identify:
+
+* Unusual market participation
+* Earnings-related trading
+* News events
+* IPO-period activity
+* Market stress
+* Abnormal investor interest
+
+##### Outputs to inspect
+
+* Relative-volume time-series plots
+* Reference lines at `1`, `2`, and `3`
+* Relative-volume summary table
+* Relative-volume empirical distribution
+* Largest relative-volume event table
+* Zero-volume summary from the feature-validity section
+
+##### Questions to answer
+
+* Are most relative-volume values close to `1`?
+* Are values greater than `2` or `3` uncommon?
+* Are extreme spikes concentrated around a small number of dates?
+* Do large volume spikes coincide with large absolute returns?
+* Are spikes more common during the early IPO period?
+* Are there periods where the normal volume level appears to change?
+* Are there zero-volume days?
+* Are there missing or infinite values?
+* Is the feature strongly right-skewed?
+
+##### How to analyse the results
+
+A relative-volume value close to `1` indicates that trading volume is close to its recent average.
+
+Typical interpretations are:
+
+* Below `1`: lower-than-normal volume
+* Around `1`: normal volume
+* Above `2`: approximately twice normal volume
+* Above `3`: approximately three times normal volume
+
+The distribution is expected to be right-skewed. Most observations should be around ordinary trading levels, with occasional large spikes.
+
+A large spike is not necessarily an error. Review the corresponding:
+
+* Date
+* Raw volume
+* Daily return
+* Absolute daily return
+* Price relative to MA20
+* Rolling returns
+
+The dataset alone cannot prove that a spike was caused by earnings, news, or another event. Such dates should be described as candidate event dates unless external event data is available.
+
+Extremely high values can compress the main time-series plot. A truncated display range or logarithmic scale may be used for visualisation, while the original observations should remain unchanged in the event table.
+
+---
+
+#### 7.6 Inspecting lagged returns
+
+##### Purpose
+
+Check whether previous-period return features are shifted correctly and whether past returns contain evidence of momentum or short-term reversal.
+
+The lagged-return features are:
+
+* `lag_1_return_no_calendar`
+* `lag_5_return_no_calendar`
+
+##### Outputs to inspect
+
+* Lag-alignment audit table
+* Full lag-alignment error summary
+* Lag relationship matrix
+* Lag-return quantile response plots
+* Next-day return by lag quantile
+
+##### Questions to answer
+
+* Does `lag_1_return` equal the previous observation’s daily return?
+* Does `lag_5_return` equal the daily return from five observations earlier?
+* Are lag calculations performed separately for each ticker?
+* Are there off-by-one errors?
+* Does any ticker receive a lag value from the previous ticker?
+* Are future returns accidentally used?
+* Is the relationship between lagged and current returns positive or negative?
+* Is the relationship between lagged and next-day returns positive or negative?
+* Do high lagged-return quantiles lead to higher or lower future returns?
+* Are the relationships consistent across tickers?
+
+##### How to analyse the results
+
+The required alignment is:
+
+[
+lag1_t = return_{t-1}
+]
+
+[
+lag5_t = return_{t-5}
+]
+
+The first lagged observations should be missing because no earlier observations are available.
+
+The lag-alignment table is primarily a calculation-validity check. Stored values should match independently shifted values within a small numerical tolerance.
+
+The correlation matrix can then be used to inspect return behaviour:
+
+* Positive correlation between past and future returns may indicate momentum.
+* Negative correlation may indicate short-term reversal.
+* Correlation close to zero suggests little monotonic relationship.
+* Different signs across tickers suggest that the effect is not stable.
+
+Spearman correlation is useful because return distributions often contain extreme values and may not have a purely linear relationship.
+
+The quantile-response plots should be inspected for ordered patterns. For example:
+
+* Increasing future returns across lag quantiles may indicate momentum.
+* Decreasing future returns across lag quantiles may indicate reversal.
+* A U-shaped or irregular pattern may indicate nonlinearity or instability.
+
+These results are exploratory. Statistical and economic significance must later be assessed using time-aware, out-of-sample modelling.
+
+---
+
+#### 7.7 Inspecting rolling returns
+
+##### Purpose
+
+Use rolling returns to capture short- and medium-horizon momentum.
+
+The available rolling-return features are:
+
+* `rolling_7d_return_no_calendar`
+* `rolling_30d_return_no_calendar`
+
+Because the data uses a no-calendar structure, these names may represent seven and 30 trading observations rather than calendar days.
+
+##### Outputs to inspect
+
+* Rolling-return time-series plots
+* Rolling-return availability table
+* Rolling 7 versus rolling 30 scatter plots
+* Rolling-return momentum-regime matrix
+
+##### Questions to answer
+
+* Are the initial observations missing until enough history is available?
+* Does the seven-observation return become available before the 30-observation return?
+* Are rolling returns positive during upward price trends?
+* Are rolling returns negative during drawdowns?
+* Does the shorter return horizon react faster?
+* Is the 30-observation return smoother?
+* Are extreme returns plausible when compared with the price history?
+* Do later IPO assets have shorter rolling-return histories?
+* How often do the short- and medium-term signals agree?
+* How often does short-term momentum reverse relative to the longer trend?
+
+##### How to analyse the results
+
+The seven-observation return should react more quickly to recent price movements. The 30-observation return should provide a smoother view of medium-term momentum.
+
+The combination of the two features produces four useful regimes:
+
+| Rolling 30 return | Rolling 7 return | Interpretation                                      |
+| ----------------- | ---------------- | --------------------------------------------------- |
+| Positive          | Positive         | Short- and medium-term momentum are both positive   |
+| Positive          | Negative         | Short-term pullback within a broader upward trend   |
+| Negative          | Positive         | Short-term recovery within a broader downward trend |
+| Negative          | Negative         | Short- and medium-term momentum are both negative   |
+
+The regime matrix shows how frequently each ticker occupies these states.
+
+Extreme rolling returns should be compared with the adjusted-price plot. A very large positive or negative value may be valid during:
+
+* IPO volatility
+* Market crashes
+* Strong rallies
+* Company-specific shocks
+
+An extreme value that cannot be reconciled with the underlying price movement may indicate an incorrect return formula, price adjustment problem, or ticker-boundary error.
+
+---
+
+#### 7.8 Checking feature distributions
+
+##### Purpose
+
+Understand the statistical shape of each feature and determine whether scaling, transformation, clipping, or robust modelling methods may be required.
+
+The main distribution analysis should focus on:
+
+* Daily return
+* Log return
+* Lagged returns
+* Rolling returns
+* `price_vs_ma20`
+* Rolling volatility
+* Drawdown
+
+Relative volume is analysed separately in its own section to avoid duplication.
+
+Raw adjusted prices, moving-average levels, and cumulative returns should not be the main focus of pooled distribution plots because they are strongly affected by ticker price levels and the selected historical period.
+
+##### Outputs to inspect
+
+* Distribution summary matrix
+* Skewness matrix
+* Standard-deviation matrix
+* IQR-outlier percentage matrix
+* Boxplots by ticker
+* Empirical cumulative distribution plots
+* Median within-ticker Spearman correlation matrix
+* Correlation consistency matrix
+* Separate target-distribution summaries
+
+##### Questions to answer
+
+* Are return features centred close to zero?
+* Are the distributions symmetric or skewed?
+* Do the features have heavy tails?
+* Which tickers contain the greatest variability?
+* Which features contain the highest proportion of outliers?
+* Are feature scales substantially different?
+* Are transformations required?
+* Would robust scaling be more appropriate than standard scaling?
+* Are some engineered features highly correlated?
+* Are correlations consistent across tickers?
+* Is the target direction severely imbalanced?
+* Does the target-return distribution contain extreme observations?
+
+##### How to analyse the results
+
+The distribution summary should be used to compare:
+
+* Mean and median
+* Standard deviation
+* Percentiles
+* Minimum and maximum
+* Skewness
+* Interquartile range
+* Outlier percentages
+
+Large differences between the mean and median suggest skewness or sensitivity to extreme values.
+
+Return features are commonly centred near zero and may have heavy tails. A small number of large observations is not automatically evidence of an error, but these observations should be cross-checked against the price history.
+
+Boxplots are useful for comparing scale and dispersion across tickers. Empirical cumulative distribution plots are useful for comparing the full distribution without relying on histogram bin choices.
+
+Possible preprocessing implications include:
+
+* **Standard scaling:** suitable when values are reasonably symmetric and not dominated by extreme observations.
+* **Robust scaling:** suitable when features contain heavy tails or large outliers.
+* **Log transformation:** potentially useful for strongly right-skewed non-negative features such as relative volume.
+* **Winsorisation or clipping:** should only be considered after confirming that extreme values are valid and after thresholds are estimated using training data only.
+* **No transformation:** suitable when tree-based models can naturally accommodate the observed scale and skewness.
+
+Highly correlated features may contain overlapping information. For example:
+
+* Daily return and log return are usually strongly correlated.
+* Rolling 7- and 30-observation returns may be moderately correlated.
+* MA-related features may overlap with rolling-return features.
+* Drawdown and momentum features may be negatively related during declining markets.
+
+Correlation alone does not require a feature to be removed. The decision should also consider:
+
+* Interpretability
+* Model type
+* Out-of-sample performance
+* Feature importance
+* Stability across tickers and time
+
+The target features should be analysed separately from predictor features. They should not be included in the predictor correlation matrix.
+
+---
+
+### Suggested observations
+
+#### Observation 1 — Feature validity
+
+The independently recalculated features broadly match the stored feature values, indicating that the rolling, lagged, and target calculations have been implemented consistently. Missing values are concentrated mainly at the beginning of each ticker’s history, where insufficient observations are available for moving averages and rolling returns, and at the end of each ticker’s history for next-day targets.
+
+Any mismatched rows, internal missing values, or infinite observations should be investigated before modelling. Later IPO assets naturally contain fewer valid observations because their available price histories are shorter.
+
+#### Observation 2 — Moving-average behaviour
+
+MA20 reacts more quickly to changes in adjusted price, while MA50 produces a smoother and slower-moving representation of the broader trend. The moving averages generally follow the price without unexplained discontinuities, and MA20–MA50 crossovers occur after changes in price direction.
+
+Periods where price remains above both averages are consistent with positive trend regimes, while periods below both averages are consistent with negative trend regimes. Any unusually long flat section or abrupt moving-average jump should be checked against the underlying adjusted-price data.
+
+#### Observation 3 — Price relative to MA20
+
+The `price_vs_ma20` feature is close to zero when price is near MA20, positive when price is above MA20, and negative when price is below MA20. This confirms that the feature has the expected sign and interpretation.
+
+Large positive and negative values identify periods of strong momentum, sell-offs, or temporarily overextended price movements. Extreme observations should be compared with IPO periods, market crashes, and other large price movements before being treated as errors.
+
+#### Observation 4 — Relative-volume behaviour
+
+Relative volume is concentrated around normal trading levels and has a right-skewed distribution with occasional large spikes. Values above `2` or `3` identify days where trading activity is substantially greater than its recent baseline.
+
+Some high-volume dates also coincide with large absolute returns, suggesting that the feature captures periods of unusual market participation. These dates may relate to earnings, news, IPO activity, or market stress, although external event data is required to establish the cause.
+
+#### Observation 5 — Lagged-return behaviour
+
+The lagged-return features align correctly with previous observations and do not cross ticker boundaries. Correlations between lagged and future returns are likely to be small and may differ across tickers.
+
+Positive relationships may indicate momentum, while negative relationships may indicate short-term reversal. Quantile-response plots should be used to determine whether any relationship is ordered and consistent rather than being driven by a small number of extreme observations.
+
+#### Observation 6 — Rolling-return behaviour
+
+The rolling-return features become available only after sufficient history exists and behave consistently with the underlying price trends. Seven-observation returns respond more quickly to recent price changes, while 30-observation returns provide a smoother measure of medium-term momentum.
+
+Periods where both rolling returns are positive represent aligned upward momentum. Disagreement between the two horizons identifies short-term pullbacks or recoveries within a broader trend.
+
+#### Observation 7 — Feature distributions and preprocessing
+
+Return-based features are centred close to zero but may contain heavy tails and large observations during volatile periods. Relative volume is strongly right-skewed, while rolling volatility and drawdown differ meaningfully across tickers.
+
+These distributional differences suggest that some models may benefit from robust scaling or carefully justified transformations. Any clipping or winsorisation should be based only on the training data to avoid leakage.
+
+Strong correlations between related return features may indicate overlapping information, but feature removal should be based on model validation rather than correlation alone.
+
+---
+
+### Conclusion
+
+The feature analysis evaluates whether the engineered variables are correctly calculated, economically interpretable, and suitable for later modelling.
+
+The feature-recalculation and health checks establish whether moving averages, rolling returns, lagged returns, relative volume, drawdown, volatility, and target variables have been constructed correctly. Expected missing values should appear mainly at the beginning of rolling or lagged features and at the end of next-day target features.
+
+Moving averages and `price_vs_ma20` describe short- and medium-term trend behaviour. Relative volume captures unusual trading activity, while lagged and rolling returns represent momentum and reversal behaviour across different horizons. Distribution and correlation analysis identify skewness, heavy tails, scale differences, extreme observations, and potentially redundant features.
+
+Because some assets listed later than others, the number of valid observations differs across tickers, particularly for features requiring longer histories. These differences should be considered when removing incomplete rows, splitting the data, and comparing model performance across assets.
+
+Overall, this analysis determines whether the features are structurally valid, whether unusual values are plausible, whether transformations or robust scaling may be needed, and whether any features contain future information. Features should only proceed to modelling after unexplained mismatches, infinite values, internal missing values, and leakage risks have been resolved.
 
 ## 8. Target analysis
 * \[ ] Inspect target\_next\_day\_return
